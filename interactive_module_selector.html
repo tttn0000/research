@@ -52,32 +52,32 @@
             height: 900px;
         }
         .legend {
-            margin-top: 8px;
-            padding: 8px 12px;
+            margin-top: -15px;
+            padding: 6px 10px;
             background-color: #f8f9fb;
             border: 1px solid #dadde1;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
         }
         .legend-item {
             display: inline-block;
-            margin-right: 20px;
-            margin-bottom: 4px;
+            margin-right: 15px;
+            margin-bottom: 2px;
         }
         .legend-color {
             display: inline-block;
-            width: 12px;
-            height: 12px;
-            margin-right: 6px;
+            width: 10px;
+            height: 10px;
+            margin-right: 5px;
             border-radius: 50%;
         }
         .stats {
-            margin-top: 8px;
-            padding: 8px 12px;
+            margin-top: -5px;
+            padding: 6px 10px;
             background-color: #f8f9fb;
             border: 1px solid #dadde1;
             border-radius: 4px;
-            font-size: 12px;
+            font-size: 11px;
         }
     </style>
 </head>
@@ -86330,14 +86330,7 @@
                 plot_bgcolor: '#FCFCFD',
                 paper_bgcolor: 'white',
                 height: 800,
-                showlegend: true,
-                legend: {
-                    x: 0.02, y: 0.98,
-                    bgcolor: 'rgba(255,255,255,0.8)',
-                    bordercolor: '#DADDE1',
-                    borderwidth: 1,
-                    font: { size: 11 }
-                },
+                showlegend: false,
                 margin: { l: 60, r: 40, t: 50, b: 60 }
             };
             
@@ -86362,11 +86355,7 @@
             const totalShifted = data.shifted_dimensions ? data.shifted_dimensions.reduce((sum, d) => sum + d[1], 0) : 0;
             
             document.getElementById('statsContent').innerHTML = `
-                <p><strong>Module ${module}mm Statistics:</strong></p>
-                <p>Fits: ${totalFit}</p>
-                <p>Does not fit: ${totalNotFit}</p>
-                <p>Shifted: ${totalShifted}</p>
-                <p>Tolerance: ±${data.tolerance}mm</p>
+                <span><strong>${module}mm:</strong> Fits: ${totalFit} | Not fit: ${totalNotFit} | Shifted: ${totalShifted} | Tolerance: ±${data.tolerance}mm</span>
             `;
         }
         
