@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Rectangular Composite Enumerator — v3.2 (Symmetry default + Permutation panel)</title>
+<style>
+  :root{
+    --ui: #0b5fff;
+    --ok: #1a9e55;
+    --muted: #6b7280;
+    --ink: #111827;
+    --ink-2: #374151;
+    --bg: #ffffff;
+    --chip: #f3f4f6;
+    --warn: #b45309;
+    --grid: #e5e7eb;
+    --grid-strong: #cbd5e1;    /* to mirror sandbox */
+    --cell-border: #b6c2d0;
+    --bbox: #a855f7;
+    --shape: #0ea5e9;
+    --inscribed: #10b981;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--ink); font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+  * { box-sizing: border-box; }
+  .wrap{ max-width: 1260px; margin: 22px auto 60px; padding: 0 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px 0; font-weight: 700; color: var(--ink); }
+  .grid { display: grid; gap: 12px; grid-template-columns: 1.05fr 0.95fr; align-items: start; }
+  .panel { border: 1px solid var(--grid); border-radius: 10px; padding: 14px; background: #fff; }
+  .panel h2 { font-size: 14px; margin: 0 0 10px 0; color: var(--ink-2); }
+  fieldset { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin: 0 0 10px 0; }
+  legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+  .g2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+  .g3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+  .g4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  input[type="number"], select, textarea { width: 100%; padding: 8px 10px; border:1px solid var(--grid); border-radius:8px; font-size: 14px; }
+  input[type="checkbox"]{ transform: translateY(1px); }
+  textarea { min-height: 110px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New"; }
+  .rowline{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button{ padding: 8px 12px; border: 1px solid var(--ui); color: #fff; background: var(--ui); border-radius: 8px; font-weight: 600; cursor: pointer; }
+  button.secondary{ background: #fff; color: var(--ui); }
+  button.warn{ border-color: var(--warn); background: var(--warn); color: #fff; }
+  button:disabled{ opacity: .5; cursor: not-allowed; }
+  .tiny{ font-size: 12px; color: var(--muted); }
+  .stat{ background: var(--chip); padding: 6px 8px; border-radius: 8px; font-size: 12px; }
+  canvas { width: 100%; height: auto; border:1px solid var(--grid); border-radius:8px; background:#fff; }
+  .timeline { display:grid; grid-template-columns: 1fr auto auto; gap:8px; align-items:center; }
+  input[type="range"]{ width: 100%; }
+  .pill { display: inline-flex; align-items:center; gap: 6px; background: var(--chip); border-radius: 999px; padding: 6px 10px; font-size: 12px; color: var(--ink-2); }
+  .kvd{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px; }
+  .kvd div { display:flex; justify-content: space-between; gap: 8px; background: var(--chip); padding: 6px 10px; border-radius: 8px; font-size: 12px; }
+  .mono{ font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New"; }
+  .legendline{ display:flex; gap:10px; flex-wrap: wrap; }
+  .chip{ font-size:12px; padding:4px 8px; border-radius:6px; background:var(--chip); }
+  .bar { display:grid; gap: 8px; }
+  .panel .split { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* Permutation panel */
+  .perms { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+  .perm { border:1px solid var(--grid); border-radius:8px; padding:6px; display:grid; gap:4px; align-items:center; justify-items:center; }
+  .perm.is-canon { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(26,158,85,.18) inset; }
+  .perm canvas { width: 100%; height: auto; background:#fff; border-radius:6px; }
+  .perm .lbl { font-size: 11px; color: var(--ink-2); text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Rectangular Composite Enumerator — v3.2</h1>
+  <div class="grid">
+    <section class="panel">
+      <h2>Parameters</h2>
+
+      <fieldset>
+        <legend>Canvas (cells)</legend>
+        <div class="g3">
+          <label>Width
+            <input id="canvasW" type="number" min="2" max="64" value="12" />
+          </label>
+          <label>Height
+            <input id="canvasH" type="number" min="2" max="64" value="12" />
+          </label>
+          <label>Show grid
+            <span class="rowline">
+              <input id="showGrid" type="checkbox" checked />
+              <span class="tiny">toggle G</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Min inscribed rectangle (required)</legend>
+        <div class="g4">
+          <label>Min W
+            <input id="baseMinW" type="number" min="1" max="64" value="3" />
+          </label>
+          <label>Min H
+            <input id="baseMinH" type="number" min="1" max="64" value="2" />
+          </label>
+          <label>Allow larger base
+            <span class="rowline"><input id="allowLargerBase" type="checkbox" checked /></span>
+          </label>
+          <label>Max base area
+            <input id="baseMaxArea" type="number" min="1" max="4096" value="16" />
+          </label>
+        </div>
+        <div class="tiny">All shapes must contain a rectangle ≥ Min W×Min H (highlighted). Seeding starts from a qualifying base.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Base placement</legend>
+        <div class="g3">
+          <label>Mode
+            <select id="basePlacementMode">
+              <option value="fixed">Fixed (X,Y)</option>
+              <option value="cornerTL">Corner TL</option>
+              <option value="cornerTR">Corner TR</option>
+              <option value="cornerBL">Corner BL</option>
+              <option value="cornerBR">Corner BR</option>
+              <option value="centre">Centre</option>
+              <option value="enumerate">Enumerate all positions</option>
+              <option value="randomOnce" selected>Random once</option>
+              <option value="randomPerSeed">Random per seed</option>
+            </select>
+          </label>
+          <label>Base X
+            <input id="baseX" type="number" min="0" max="63" value="0" />
+          </label>
+          <label>Base Y
+            <input id="baseY" type="number" min="0" max="63" value="0" />
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Append rectangles (composite growth)</legend>
+        <div class="g4">
+          <label>Min W
+            <input id="appendMinW" type="number" min="1" max="64" value="2" />
+          </label>
+          <label>Min H
+            <input id="appendMinH" type="number" min="1" max="64" value="1" />
+          </label>
+          <label>Max appended rects
+            <input id="maxRects" type="number" min="0" max="20" value="3" />
+          </label>
+          <label>Max total area
+            <input id="maxArea" type="number" min="1" max="2048" value="24" />
+          </label>
+        </div>
+        <div class="g4" style="margin-top:8px;">
+          <label>Min total area
+            <input id="minArea" type="number" min="1" max="2048" value="6" />
+          </label>
+          <label>Min contact length
+            <input id="minContactLength" type="number" min="1" max="64" value="1" />
+          </label>
+          <label>Full contact required
+            <span class="rowline"><input id="fullContactRequired" type="checkbox" /></span>
+          </label>
+          <label>Show bounding box
+            <span class="rowline"><input id="showBBox" type="checkbox" checked /></span>
+          </label>
+        </div>
+        <div class="tiny" style="margin-top:8px;">D4 symmetry de-duplication is always ON. Min contact length: minimum cell length that must be in contact. Full contact: either whole W or H must be in contact.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Enumeration & randomisation</legend>
+        <div class="g3">
+          <label>Max results
+            <input id="maxResults" type="number" min="1" max="50000" value="2000" />
+          </label>
+          <label>Frontier mode
+            <select id="frontierMode">
+              <option value="bfs" selected>BFS</option>
+              <option value="dfs">DFS</option>
+              <option value="rnd">Random</option>
+            </select>
+          </label>
+          <label>Shuffle candidates
+            <select id="shuffleMode">
+              <option value="off" selected>Off</option>
+              <option value="once">Once</option>
+              <option value="perStep">Every step</option>
+            </select>
+          </label>
+        </div>
+        <div class="g3">
+          <label>Random seed
+            <input id="randSeed" type="number" min="0" max="4294967295" value="1337" />
+          </label>
+          <div></div><div></div>
+        </div>
+        <div class="rowline" style="margin-top:6px;">
+          <button id="btnGenerate">Generate</button>
+          <button id="btnStop" class="warn" disabled>Stop</button>
+          <span id="progress" class="tiny">Idle</span>
+        </div>
+      </fieldset>
+
+      <h2>Export / Import</h2>
+      <fieldset>
+        <legend>Export</legend>
+        <div class="rowline">
+          <button id="btnExportJSON">Export JSON (all)</button>
+          <button id="btnExportRPN">Export RPN list (all)</button>
+          <button id="btnExportCurrentRPN" class="secondary">Copy current as RPN</button>
+        </div>
+        <div class="tiny">RPN export uses composite cell notation: <span class="mono">&lt; S#### | { y1,x1 ; y2,x2 } { … } &gt;</span> with 1-based inclusive coordinates.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Import</legend>
+        <div class="split">
+          <div class="bar">
+            <label>Paste RPN composites (one per line or separated by blank lines)
+              <textarea id="rpnIn" placeholder="< S1 | { 1,1 ; 3,5 } { 4,3 ; 8,5 } >"></textarea>
+            </label>
+            <div class="rowline">
+              <select id="importRpnMode">
+                <option value="replace">Replace results</option>
+                <option value="append" selected>Append to results</option>
+              </select>
+              <button id="btnImportRPN">Import RPN</button>
+            </div>
+          </div>
+          <div class="bar">
+            <label>Load JSON (from this tool)
+              <input id="jsonFile" type="file" accept=".json" />
+            </label>
+            <div class="rowline">
+              <select id="importJsonMode">
+                <option value="replace">Replace results</option>
+                <option value="append" selected>Append to results</option>
+              </select>
+              <button id="btnImportJSON">Import JSON</button>
+            </div>
+          </div>
+        </div>
+        <div class="tiny">Import always applies symmetry de-duplication (D4) plus translation canonicalisation.</div>
+      </fieldset>
+
+      <h2>Stats</h2>
+      <div class="legendline">
+        - <span id="statCount" class="stat">0 shapes</span>
+        - <span id="statAreas" class="stat">area histogram: —</span>
+        - <span id="statRects" class="stat">rectangles histogram: —</span>
+      </div>
+
+      <h2>Parameters (JSON)</h2>
+      <fieldset>
+        <legend>Current Parameters</legend>
+        <div class="bar">
+          <label>Parameters JSON
+            <textarea id="paramsJSON" readonly style="min-height: 200px; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New'; font-size: 12px;"></textarea>
+          </label>
+          <div class="rowline">
+            <button id="btnCopyParams">Copy Parameters</button>
+            <button id="btnLoadParams" class="secondary">Load Parameters</button>
+            <input id="paramsFile" type="file" accept=".json" style="display: none;" />
+          </div>
+        </div>
+      </fieldset>
+    </section>
+
+    <section class="panel">
+      <h2>Viewer</h2>
+      <div class="bar">
+        <canvas id="scene" width="900" height="900" aria-label="shape canvas"></canvas>
+        <div class="timeline">
+          <input id="idx" type="range" min="0" max="0" value="0" />
+          <span class="pill"><span id="idxNow">0</span>/<span id="idxMax">0</span></span>
+          <span class="rowline">
+            <button id="prev" class="secondary">Prev</button>
+            <button id="play">Play</button>
+            <button id="next" class="secondary">Next</button>
+          </span>
+        </div>
+        <div class="rowline">
+          <label>Speed (ms/step)
+            <input id="speed" type="number" min="50" max="2000" step="50" value="350" />
+          </label>
+          <span class="kvd">
+            <div><span>Area</span><span class="mono" id="kvArea">—</span></div>
+            <div><span>Rectangles</span><span class="mono" id="kvRects">—</span></div>
+          </span>
+        </div>
+        <label>Current shape (RPN composite cells)
+          <textarea id="rpnCurrent" readonly></textarea>
+        </label>
+
+        <fieldset>
+          <legend>Permutations (D4 group on the full composite)</legend>
+          <div id="permGrid" class="perms"></div>
+          <div class="tiny">Identity, mirrors, and 90°/180° rotations of the composite shape. Canonical orientation is outlined in green.</div>
+        </fieldset>
+
+        <div class="legendline tiny">
+          - <span class="chip">Min inscribed rectangle highlighted</span>
+          - <span class="chip">Edge adjacency enforced</span>
+          - <span class="chip">Hole-free flood-fill filter</span>
+          - <span class="chip">Translation + D4 symmetry de-dup</span>
+          - <span class="chip">Keyboard: ←/→, Space, G, . , ,</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Config: symmetry de-duplication always ON
+  const SYM_DEDUP = true;
+
+  // ---------- Utilities and geometry
+  const key = (x,y)=>`${x},${y}`;
+  const parseKey = s => { const [x,y]=s.split(",").map(Number); return {x,y}; };
+  const dir4 = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+  function shuffle(arr, rnd){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(rnd()* (i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+
+  function normaliseCells(cells){
+    let minX=Infinity, minY=Infinity;
+    for(const c of cells){ const {x,y}=parseKey(c); if(x<minX)minX=x; if(y<minY)minY=y; }
+    const out = [];
+    for(const c of cells){ const {x,y}=parseKey(c); out.push(key(x-minX,y-minY)); }
+    out.sort();
+    return out;
+  }
+
+  // Accepts ["x,y"] OR [{x,y}], returns normalised ["x,y"]
+  function transformCells(cells, mode){
+    const pts = cells.map(c => (typeof c === 'string' ? parseKey(c) : c));
+    const out = pts.map(({x,y})=>{
+      switch(mode){
+        case 0: return {x,y};
+        case 1: return {x:-x, y};      // mirror Y-axis
+        case 2: return {x, y:-y};      // mirror X-axis
+        case 3: return {x:-x, y:-y};   // rotate 180
+        case 4: return {x:y, y:x};     // reflect y=x
+        case 5: return {x:-y, y:x};    // rotate 90 CCW
+        case 6: return {x:y, y:-x};    // rotate 90 CW
+        case 7: return {x:-y, y:-x};   // reflect y=-x
+        default: return {x,y};
+      }
+    });
+    let minX=Infinity, minY=Infinity;
+    for(const p of out){ if(p.x<minX)minX=p.x; if(p.y<minY)minY=p.y; }
+    return out.map(p=>key(p.x-minX, p.y-minY)).sort();
+  }
+
+  function canonicalString(cells, sym=SYM_DEDUP){
+    const base = normaliseCells(cells);           // ["x,y", ...]
+    if(!sym) return base.join("|");
+    
+    const canonical = getCompositeCanonicalForm(base);
+    return canonical.canonical.join("|");
+  }
+
+  function canonicalMode(cells){
+    const base = normaliseCells(cells);
+    const canonical = getCompositeCanonicalForm(base);
+    return canonical.transform.mode;
+  }
+
+  function cellsFromRect(x,y,w,h){
+    const out = [];
+    for(let i=0;i<w;i++) for(let j=0;j<h;j++) out.push(key(x+i,y+j));
+    return out;
+  }
+
+  function touchesByEdge(rectCells, shapeSet){
+    for(const c of rectCells){
+      const {x,y} = parseKey(c);
+      for(const [dx,dy] of dir4){
+        const nb = key(x+dx,y+dy);
+        if(shapeSet.has(nb)) return true;
+      }
+    }
+    return false;
+  }
+
+  function meetsContactRequirements(rectCells, shapeSet, minContact, fullContact){
+    if(!touchesByEdge(rectCells, shapeSet)) return false;
+    
+    if(minContact <= 1 && !fullContact) return true;
+    
+    // Find all contact points
+    const contactPoints = [];
+    for(const c of rectCells){
+      const {x,y} = parseKey(c);
+      for(const [dx,dy] of dir4){
+        const nb = key(x+dx,y+dy);
+        if(shapeSet.has(nb)) contactPoints.push({x, y, dx, dy});
+      }
+    }
+    
+    if(contactPoints.length === 0) return false;
+    
+    // Check minimum contact length
+    if(minContact > 1){
+      // Group contacts by direction and check for continuous contact
+      const contactsByDir = new Map();
+      for(const cp of contactPoints){
+        const dirKey = `${cp.dx},${cp.dy}`;
+        if(!contactsByDir.has(dirKey)) contactsByDir.set(dirKey, []);
+        contactsByDir.get(dirKey).push(cp);
+      }
+      
+      let hasMinContact = false;
+      for(const [dir, points] of contactsByDir){
+        // Sort points by position along the contact edge
+        points.sort((a,b) => {
+          if(dir === '1,0' || dir === '-1,0') return a.y - b.y; // vertical edge
+          return a.x - b.x; // horizontal edge
+        });
+        
+        // Check for continuous contact of at least minContact length
+        let currentLength = 1;
+        for(let i = 1; i < points.length; i++){
+          const prev = points[i-1];
+          const curr = points[i];
+          const isAdjacent = (dir === '1,0' || dir === '-1,0') ? 
+            (curr.y === prev.y + 1) : (curr.x === prev.x + 1);
+          
+          if(isAdjacent){
+            currentLength++;
+            if(currentLength >= minContact){
+              hasMinContact = true;
+              break;
+            }
+          } else {
+            currentLength = 1;
+          }
+        }
+        if(hasMinContact) break;
+      }
+      
+      if(!hasMinContact) return false;
+    }
+    
+    // Check full contact requirement
+    if(fullContact){
+      const rect = bboxFromCells(rectCells);
+      const rectW = rect.w, rectH = rect.h;
+      
+      // Check if either full width or full height is in contact
+      let fullWidthContact = false, fullHeightContact = false;
+      
+      // Check for full width contact (horizontal edges)
+      for(let y = rect.minY; y <= rect.maxY; y++){
+        let hasTopContact = false, hasBottomContact = false;
+        for(let x = rect.minX; x <= rect.maxX; x++){
+          const cell = key(x, y);
+          if(rectCells.includes(cell)){
+            // Check top and bottom edges
+            const topNeighbor = key(x, y-1);
+            const bottomNeighbor = key(x, y+1);
+            if(shapeSet.has(topNeighbor)) hasTopContact = true;
+            if(shapeSet.has(bottomNeighbor)) hasBottomContact = true;
+          }
+        }
+        if(hasTopContact || hasBottomContact){
+          fullWidthContact = true;
+          break;
+        }
+      }
+      
+      // Check for full height contact (vertical edges)
+      for(let x = rect.minX; x <= rect.maxX; x++){
+        let hasLeftContact = false, hasRightContact = false;
+        for(let y = rect.minY; y <= rect.maxY; y++){
+          const cell = key(x, y);
+          if(rectCells.includes(cell)){
+            // Check left and right edges
+            const leftNeighbor = key(x-1, y);
+            const rightNeighbor = key(x+1, y);
+            if(shapeSet.has(leftNeighbor)) hasLeftContact = true;
+            if(shapeSet.has(rightNeighbor)) hasRightContact = true;
+          }
+        }
+        if(hasLeftContact || hasRightContact){
+          fullHeightContact = true;
+          break;
+        }
+      }
+      
+      if(!fullWidthContact && !fullHeightContact) return false;
+    }
+    
+    return true;
+  }
+
+  function overlaps(rectCells, shapeSet){
+    for(const c of rectCells) if(shapeSet.has(c)) return true;
+    return false;
+  }
+
+  function bboxFromCells(cells){
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    for(const c of cells){ const {x,y}=parseKey(c);
+      if(x<minX)minX=x; if(y<minY)minY=y;
+      if(x>maxX)maxX=x; if(y>maxY)maxY=y;
+    }
+    return {minX, minY, maxX, maxY, w: maxX-minX+1, h: maxY-minY+1};
+  }
+
+  function holeFree(shapeCells, canvasW, canvasH){
+    const {minX,minY,maxX,maxY} = bboxFromCells(shapeCells);
+    const W = Math.min(canvasW, Math.max(1, maxX-minX+1));
+    const H = Math.min(canvasH, Math.max(1, maxY-minY+1));
+    const shape = new Set(shapeCells.map(s=>{
+      const {x,y}=parseKey(s);
+      return key(x-minX+1, y-minY+1);
+    }));
+    const w = W+2, h = H+2;
+    const q = [[0,0]];
+    const seen = new Set([key(0,0)]);
+    const inside = (x,y)=> x>=0 && y>=0 && x<w && y<h;
+    while(q.length){
+      const [x,y] = q.shift();
+      for(const [dx,dy] of dir4){
+        const nx=x+dx, ny=y+dy;
+        if(!inside(nx,ny)) continue;
+        const k = key(nx,ny);
+        if(seen.has(k)) continue;
+        if(shape.has(k)) continue;
+        seen.add(k);
+        q.push([nx,ny]);
+      }
+    }
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const k = key(x,y);
+        if(!shape.has(k) && !seen.has(k)) return false;
+      }
+    }
+    return true;
+  }
+
+  // Expanded-state key = symmetry/translation canonical + anchor position to avoid redundant expansion
+  function expandedKey(shapeSet, sym){
+    const arr = Array.from(shapeSet);
+    const canon = canonicalString(arr, sym);
+    const bb = bboxFromCells(arr);
+    return `${canon}@${bb.minX},${bb.minY}`;
+  }
+
+  // ---------- State
+  let SHAPES = []; // [{cells:Set, rects:[{x,y,w,h}], area, canon, bbox:{w,h}, baseHL:[cellKeys]}]
+  let STOP = false, PLAY = false, TIMER = null;
+
+  // ---------- DOM
+  const $ = sel => document.querySelector(sel);
+  const W = $('#canvasW'), H = $('#canvasH');
+  const baseMinW = $('#baseMinW'), baseMinH = $('#baseMinH'), allowLargerBase = $('#allowLargerBase'), baseMaxArea = $('#baseMaxArea');
+  const basePlacementMode = $('#basePlacementMode'), baseX = $('#baseX'), baseY = $('#baseY');
+  const appendMinW = $('#appendMinW'), appendMinH = $('#appendMinH');
+  const maxRects = $('#maxRects'), maxArea = $('#maxArea'), minArea = $('#minArea');
+  const minContactLength = $('#minContactLength'), fullContactRequired = $('#fullContactRequired');
+  const maxResults = $('#maxResults'), showBBox = $('#showBBox'), showGrid = $('#showGrid');
+  const frontierMode = $('#frontierMode'), shuffleMode = $('#shuffleMode'), randSeed = $('#randSeed');
+
+  const btnGen = $('#btnGenerate'), btnStop = $('#btnStop'), progress = $('#progress');
+  const statCount = $('#statCount'), statAreas = $('#statAreas'), statRects = $('#statRects');
+
+  const canvas = $('#scene'), ctx = canvas.getContext('2d');
+  const idx = $('#idx'), idxNow = $('#idxNow'), idxMax = $('#idxMax');
+  const prev = $('#prev'), next = $('#next'), play = $('#play');
+  const speed = $('#speed'), kvArea = $('#kvArea'), kvRects = $('#kvRects');
+
+  const rpnCurrent = $('#rpnCurrent');
+  const btnExportJSON = $('#btnExportJSON'), btnExportRPN = $('#btnExportRPN'), btnExportCurrentRPN = $('#btnExportCurrentRPN');
+  const rpnIn = $('#rpnIn'), importRpnMode = $('#importRpnMode'), btnImportRPN = $('#btnImportRPN');
+  const jsonFile = $('#jsonFile'), importJsonMode = $('#importJsonMode'), btnImportJSON = $('#btnImportJSON');
+  const paramsJSON = $('#paramsJSON'), btnCopyParams = $('#btnCopyParams'), btnLoadParams = $('#btnLoadParams'), paramsFile = $('#paramsFile');
+
+  // Permutation panel elements
+  const permGrid = $('#permGrid');
+  const MODE_NAMES = [
+    "Identity",
+    "Mirror Y-axis",
+    "Mirror X-axis",
+    "Rotate 180°",
+    "Reflect y = x",
+    "Rotate 90° CCW",
+    "Rotate 90° CW",
+    "Reflect y = -x"
+  ];
+  const permTiles = [];
+
+  function buildPermGrid(){
+    permGrid.innerHTML = "";
+    for(let m=0;m<8;m++){
+      const wrap = document.createElement('div');
+      wrap.className = 'perm';
+      const c = document.createElement('canvas');
+      c.width = 180; c.height = 180; c.className = 'permCanvas';
+      const lbl = document.createElement('div');
+      lbl.className = 'lbl';
+      lbl.textContent = MODE_NAMES[m];
+      wrap.appendChild(c); wrap.appendChild(lbl);
+      permGrid.appendChild(wrap);
+      permTiles.push({wrap, canvas:c, ctx:c.getContext('2d')});
+    }
+  }
+
+  buildPermGrid();
+
+  // ---------- Drawing & viewer (fully revised)
+
+  // Display grid helper (bottom-left origin, 1-based cells; gridlines are 0-based)
+  function makeGrid(cw, ch){
+    const dpr = window.devicePixelRatio || 1;
+    const wpx = canvas.width, hpx = canvas.height;
+    const minPx = Math.min(wpx, hpx);
+
+    // keep a 1-cell visual margin around the board and center it
+    const marginCells = 1;
+    const g = Math.floor(minPx / (Math.max(cw, ch) + 2*marginCells));
+    const drawW = cw * g, drawH = ch * g;
+    const offX = Math.floor((wpx - drawW) / 2);
+    const offY = Math.floor((hpx - drawH) / 2);
+
+    return {
+      g,
+      // gridlines → pixels (0-based gridlines; origin bottom-left)
+      lineX(gx){ return offX + gx * g; },
+      lineY(gy){ return hpx - (offY + gy * g); },
+
+      // cells → pixels (top-left of a 1-based cell)
+      cellLeft(x){ return this.lineX(x - 1); },
+      cellTop(y){  return this.lineY(y);      },
+
+      // pixels → cells (1-based; clamp happens at caller)
+      cellX(px){ return Math.floor((px - offX) / g) + 1; },
+      cellY(py){ return Math.floor((hpx - py - offY) / g) + 1; },
+
+      // extent for drawing the board rectangle
+      offX, offY, wpx, hpx, cols: cw, rows: ch
+    };
+  }
+
+  function getStrokeForFill(fillColor){
+    // Darken HSL for stroke; fallback to a neutral border
+    const m = String(fillColor).match(/hsl\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
+    if(!m) return getComputedStyle(document.documentElement).getPropertyValue('--cell-border') || '#b6c2d0';
+    const h = +m[1], s = +m[2], l = Math.max(20, +m[3]-12);
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  }
+
+  // Internal (xi,yi) [0-based, top-left] → Display (xd,yd) [1-based, bottom-left]
+  function toDisplayCell(xi, yi, ch){
+    return { xd: xi + 1, yd: ch - yi };
+  }
+
+  // Internal rect {x,y,w,h} [x,y top-left, 0-based] → Display bottom-left cell (x1,y1) and size
+  function rectInternalToDisplay(r, ch){
+    const x1 = r.x + 1;
+    const y1 = ch - (r.y + r.h - 1);
+    return { x1, y1, w: r.w, h: r.h };
+  }
+
+  function drawGridAndAxes(grid){
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Board background
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(grid.offX, grid.offY, grid.cols*grid.g, grid.rows*grid.g);
+
+    // Light grid
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid') || '#e3e8f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let gx=0; gx<=grid.cols; gx++){
+      const x = grid.lineX(gx) + 0.5;
+      ctx.moveTo(x, grid.lineY(0) + 0.5);
+      ctx.lineTo(x, grid.lineY(grid.rows) + 0.5);
+    }
+    for(let gy=0; gy<=grid.rows; gy++){
+      const y = grid.lineY(gy) + 0.5;
+      ctx.moveTo(grid.lineX(0) + 0.5, y);
+      ctx.lineTo(grid.lineX(grid.cols) + 0.5, y);
+    }
+    ctx.stroke();
+
+    // Bold every 5th
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid-strong') || '#cbd5e1';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    for(let gx=0; gx<=grid.cols; gx+=5){
+      const x = grid.lineX(gx) + 0.5;
+      ctx.moveTo(x, grid.lineY(0) + 0.5);
+      ctx.lineTo(x, grid.lineY(grid.rows) + 0.5);
+    }
+    for(let gy=0; gy<=grid.rows; gy+=5){
+      const y = grid.lineY(gy) + 0.5;
+      ctx.moveTo(grid.lineX(0) + 0.5, y);
+      ctx.lineTo(grid.lineX(grid.cols) + 0.5, y);
+    }
+    ctx.stroke();
+
+    // Axes on gridline 0 (left and bottom edges)
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ui') || '#1c6ef2';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    // X-axis (bottom): y = 0
+    ctx.moveTo(grid.lineX(0) + 0.5, grid.lineY(0) + 0.5);
+    ctx.lineTo(grid.lineX(grid.cols) + 0.5, grid.lineY(0) + 0.5);
+    // Y-axis (left): x = 0
+    ctx.moveTo(grid.lineX(0) + 0.5, grid.lineY(0) + 0.5);
+    ctx.lineTo(grid.lineX(0) + 0.5, grid.lineY(grid.rows) + 0.5);
+    ctx.stroke();
+
+    // Highlight cell (1,1) at bottom-left
+    const x0 = grid.cellLeft(1), y0 = grid.cellTop(1);
+    ctx.save();
+    ctx.fillStyle = '#000'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.fillRect(x0+1, y0+1, grid.g-2, grid.g-2);
+    ctx.strokeRect(x0+1, y0+1, grid.g-2, grid.g-2);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('1,1', x0 + grid.g/2, y0 + grid.g/2);
+    ctx.restore();
+  }
+
+  function drawPerimeterDisplayCells(displayCells, grid, color){
+    const ctx = canvas.getContext('2d');
+    const g = grid.g;
+    const occ = new Set(displayCells.map(({yd,xd}) => `${yd},${xd}`));
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([]); // solid
+
+    for(const {yd,xd} of displayCells){
+      const xL = grid.cellLeft(xd), yT = grid.cellTop(yd), yB = yT + g, xR = xL + g;
+      // top (neighbor at y+1)
+      if(!occ.has(`${yd+1},${xd}`)){ ctx.beginPath(); ctx.moveTo(xL, yT); ctx.lineTo(xR, yT); ctx.stroke(); }
+      // right (neighbor at x+1)
+      if(!occ.has(`${yd},${xd+1}`)){ ctx.beginPath(); ctx.moveTo(xR, yT); ctx.lineTo(xR, yB); ctx.stroke(); }
+      // bottom (neighbor at y-1)
+      if(!occ.has(`${yd-1},${xd}`)){ ctx.beginPath(); ctx.moveTo(xL, yB); ctx.lineTo(xR, yB); ctx.stroke(); }
+      // left (neighbor at x-1)
+      if(!occ.has(`${yd},${xd-1}`)){ ctx.beginPath(); ctx.moveTo(xL, yT); ctx.lineTo(xL, yB); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+
+  function drawShape(item){
+    const cw = Number(W.value), ch = Number(H.value);
+    const grid = makeGrid(cw, ch);
+    const ctx = canvas.getContext('2d');
+
+    drawGridAndAxes(grid);
+    if(!item) return;
+
+    // Convert internal cells to display cells once
+    const dispCells = [];
+    for(const c of item.cells){
+      const {x,y} = parseKey(c);                 // internal (0-based, top-left)
+      const {xd,yd} = toDisplayCell(x, y, ch);   // display (1-based, bottom-left)
+      dispCells.push({xd,yd});
+    }
+
+    // Draw filled cells with per-cell borders
+    const fill = getComputedStyle(document.documentElement).getPropertyValue('--shape') || '#0ea5e9';
+    const stroke = getStrokeForFill(fill);
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+
+    for(const {xd,yd} of dispCells){
+      const x0 = grid.cellLeft(xd), y0 = grid.cellTop(yd);
+      ctx.fillRect(x0+1, y0+1, grid.g-2, grid.g-2);
+      ctx.strokeRect(x0+1, y0+1, grid.g-2, grid.g-2);
+    }
+
+    // Min inscribed rectangle highlight (if present)
+    if(item.baseHL && item.baseHL.length){
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--inscribed') || '#10b981';
+      for(const c of item.baseHL){
+        const {x,y} = parseKey(c);
+        const {xd,yd} = toDisplayCell(x, y, ch);
+        const x0 = grid.cellLeft(xd), y0 = grid.cellTop(yd);
+        ctx.fillRect(x0+1, y0+1, grid.g-2, grid.g-2);
+      }
+    }
+
+    // Placement outlines for rectangles (sandbox style outlines)
+    ctx.save();
+    ctx.strokeStyle = '#8ca2c0';
+    ctx.lineWidth = 1.5;
+    for(const r of item.rects){
+      const d = rectInternalToDisplay(r, ch);
+      const x0 = grid.cellLeft(d.x1);
+      const yTop = grid.cellTop(d.y1 + d.h - 1);
+      ctx.strokeRect(x0+1, yTop+1, d.w*grid.g-2, d.h*grid.g-2);
+    }
+    ctx.restore();
+
+    // Bounding box + perimeter + label (when toggled)
+    if(showBBox.checked){
+      // Compute bbox in display coordinates
+      const bbInt = bboxFromCells(Array.from(item.cells));
+      const x1 = bbInt.minX + 1;
+      const y1 = ch - (bbInt.maxY);               // bottom-most display y of the bbox
+      const w  = bbInt.w;
+      const h  = bbInt.h;
+
+      const x0 = grid.cellLeft(x1);
+      const yTop = grid.cellTop(y1 + h - 1);
+      const width = w*grid.g, height = h*grid.g;
+
+      // dashed bbox
+      ctx.save();
+      const bboxColor = getComputedStyle(document.documentElement).getPropertyValue('--bbox') || '#a855f7';
+      ctx.strokeStyle = bboxColor;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6,3]);
+      ctx.strokeRect(x0, yTop, width, height);
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // perimeter (bold)
+      drawPerimeterDisplayCells(dispCells, grid, bboxColor);
+
+      // label (top-left of bbox)
+      ctx.save();
+      ctx.fillStyle = bboxColor;
+      ctx.font = 'bold 14px ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      // S#### label if known; else area and dims
+      const i = Number(idx.value);
+      const idLbl = `S${String(i+1).padStart(4,'0')} · ${w}×${h} · A=${item.area}`;
+      ctx.fillText(idLbl, x0+4, yTop+4);
+      ctx.restore();
+    }
+  }
+
+  function drawPermutations(item){
+    // Draw D4 transforms of the COMPOSITE on each small tile, using bottom-left mapping.
+    const baseKeys = normaliseCells(Array.from(item.cells)); // internal, 0-based, top-left, normalised
+    const canonM = canonicalMode(baseKeys);
+
+    for(let m=0;m<8;m++){
+      const t = permTiles[m];
+      const dpr = window.devicePixelRatio || 1;
+
+      // Compute true pixel size of the tile canvas
+      const rect = t.canvas.getBoundingClientRect();
+      const size = Math.round(rect.width * dpr);
+      t.canvas.width = size;
+      t.canvas.height = size;
+
+      // Transform and bbox in internal coordinates
+      const klist = (m===0) ? baseKeys : transformCells(baseKeys, m);
+      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      for(const s of klist){
+        const {x,y} = parseKey(s);
+        if(x<minX)minX=x; if(y<minY)minY=y;
+        if(x>maxX)maxX=x; if(y>maxY)maxY=y;
+      }
+      const Wc = maxX-minX+1, Hc = maxY-minY+1;
+
+      // Fit grid for this tile (1-cell margin)
+      const g = Math.floor(size / (Math.max(Wc,Hc) + 2));
+      const drawW = Wc*g, drawH = Hc*g;
+      const offX = Math.floor((size - drawW)/2);
+      const offY = Math.floor((size - drawH)/2);
+
+      t.ctx.clearRect(0,0,size,size);
+      const fill = getComputedStyle(document.documentElement).getPropertyValue('--shape') || '#0ea5e9';
+      const stroke = getStrokeForFill(fill);
+      t.ctx.fillStyle = fill;
+      t.ctx.strokeStyle = stroke;
+      t.ctx.lineWidth = 1;
+
+      // Draw cells: map internal (0-based, top-left in the tile's bbox) → display bottom-left inside the tile
+      const toDisp = (x,y)=>({ xd: (x-minX)+1, yd: Hc - (y-minY) });
+      for(const s of klist){
+        const {x,y} = parseKey(s);
+        const {xd,yd} = toDisp(x,y);
+        const x0 = offX + (xd-1)*g;
+        const y0 = (size - offY) - yd*g;
+        t.ctx.fillRect(x0+1, y0+1, g-2, g-2);
+        t.ctx.strokeRect(x0+1, y0+1, g-2, g-2);
+      }
+
+      t.wrap.classList.toggle('is-canon', m===canonM);
+    }
+  }
+
+  // Atomic object identification and canonical form
+  function getAtomicCanonicalForm(w, h) {
+    // Canonical form: W >= H (horizontal orientation)
+    return w >= h ? {w, h, rotated: false} : {w: h, h: w, rotated: true};
+  }
+
+  function getAtomicNotation(w, h, id) {
+    const canon = getAtomicCanonicalForm(w, h);
+    const prefix = canon.rotated ? "^ " : "";
+    return `< ${prefix}${id} | 1,1 ; ${canon.h},${canon.w} >`;
+  }
+
+  function identifyAtomicObjects(rects) {
+    const atomicMap = new Map();
+    const atomicList = [];
+    
+    for(const r of rects) {
+      const canon = getAtomicCanonicalForm(r.w, r.h);
+      const key = `${canon.w}x${canon.h}`;
+      
+      if(!atomicMap.has(key)) {
+        const id = `R${atomicList.length + 1}`;
+        atomicMap.set(key, {id, w: canon.w, h: canon.h, rotated: canon.rotated});
+        atomicList.push({id, w: canon.w, h: canon.h, rotated: canon.rotated});
+      }
+    }
+    
+    return atomicList;
+  }
+
+  // Map each rectangle instance to its atomic object id and orientation
+  function buildAtomicIdMap(rects){
+    const dimToId = new Map();
+    let nextIdNum = 1;
+    const mapping = [];
+    for(const r of rects){
+      const canon = getAtomicCanonicalForm(r.w, r.h);
+      const dimKey = `${canon.w}x${canon.h}`;
+      if(!dimToId.has(dimKey)){
+        dimToId.set(dimKey, `R${nextIdNum++}`);
+      }
+      const id = dimToId.get(dimKey);
+      const rotated = r.w < r.h; // instance orientation
+      mapping.push({ id, rotated });
+    }
+    return mapping;
+  }
+
+  // Compute pairwise joining edge runs between rectangles
+  function findJoiningPairs(rects){
+    const pairs = [];
+    const idMap = buildAtomicIdMap(rects);
+
+    for(let i=0;i<rects.length;i++){
+      const a = rects[i];
+      for(let j=i+1;j<rects.length;j++){
+        const b = rects[j];
+
+        // Right of A touches left of B
+        if(a.x + a.w === b.x){
+          const y1 = Math.max(a.y, b.y);
+          const y2 = Math.min(a.y + a.h, b.y + b.h) - 1;
+          if(y2 >= y1){
+            const runA = { y1: (y1 - a.y) + 1, x1: a.w, y2: (y2 - a.y) + 1, x2: a.w, edge: 'Y' };
+            const runB = { y1: (y1 - b.y) + 1, x1: 1,   y2: (y2 - b.y) + 1, x2: 1,   edge: '-Y' };
+            pairs.push({
+              i, j,
+              a: { id: idMap[i].id, rotated: idMap[i].rotated, run: runA },
+              b: { id: idMap[j].id, rotated: idMap[j].rotated, run: runB }
+            });
+            continue;
+          }
+        }
+
+        // Left of A touches right of B
+        if(b.x + b.w === a.x){
+          const y1 = Math.max(a.y, b.y);
+          const y2 = Math.min(a.y + a.h, b.y + b.h) - 1;
+          if(y2 >= y1){
+            const runA = { y1: (y1 - a.y) + 1, x1: 1,   y2: (y2 - a.y) + 1, x2: 1,   edge: '-Y' };
+            const runB = { y1: (y1 - b.y) + 1, x1: b.w, y2: (y2 - b.y) + 1, x2: b.w, edge: 'Y' };
+            pairs.push({
+              i, j,
+              a: { id: idMap[i].id, rotated: idMap[i].rotated, run: runA },
+              b: { id: idMap[j].id, rotated: idMap[j].rotated, run: runB }
+            });
+            continue;
+          }
+        }
+
+        // Bottom of A touches top of B (internal y increases downward)
+        if(a.y + a.h === b.y){
+          const x1 = Math.max(a.x, b.x);
+          const x2 = Math.min(a.x + a.w, b.x + b.w) - 1;
+          if(x2 >= x1){
+            const runA = { y1: a.h, x1: (x1 - a.x) + 1, y2: a.h, x2: (x2 - a.x) + 1, edge: '-X' };
+            const runB = { y1: 1,   x1: (x1 - b.x) + 1, y2: 1,   x2: (x2 - b.x) + 1, edge: 'X' };
+            pairs.push({
+              i, j,
+              a: { id: idMap[i].id, rotated: idMap[i].rotated, run: runA },
+              b: { id: idMap[j].id, rotated: idMap[j].rotated, run: runB }
+            });
+            continue;
+          }
+        }
+
+        // Top of A touches bottom of B
+        if(b.y + b.h === a.y){
+          const x1 = Math.max(a.x, b.x);
+          const x2 = Math.min(a.x + a.w, b.x + b.w) - 1;
+          if(x2 >= x1){
+            const runA = { y1: 1,   x1: (x1 - a.x) + 1, y2: 1,   x2: (x2 - a.x) + 1, edge: 'X' };
+            const runB = { y1: b.h, x1: (x1 - b.x) + 1, y2: b.h, x2: (x2 - b.x) + 1, edge: '-X' };
+            pairs.push({
+              i, j,
+              a: { id: idMap[i].id, rotated: idMap[i].rotated, run: runA },
+              b: { id: idMap[j].id, rotated: idMap[j].rotated, run: runB }
+            });
+            continue;
+          }
+        }
+      }
+    }
+    return pairs;
+  }
+
+  function formatEdgeRun(run){
+    const { y1, x1, y2, x2, edge } = run;
+    if(y1 === y2 && x1 === x2){
+      return `( ${y1},${x1} )${edge}`;
+    }
+    return `( ${y1},${x1} ; ${y2},${x2} )${edge}`;
+  }
+
+  function getCompositeCanonicalForm(cells) {
+    const bb = bboxFromCells(cells);
+    const w = bb.w, h = bb.h;
+    
+    // Apply D4 symmetry transformations and find canonical form
+    const transforms = [
+      {mode: 0, name: "identity"},
+      {mode: 1, name: "mirror_y"},
+      {mode: 2, name: "mirror_x"}, 
+      {mode: 3, name: "rotate_180"},
+      {mode: 4, name: "reflect_y=x"},
+      {mode: 5, name: "rotate_90_ccw"},
+      {mode: 6, name: "rotate_90_cw"},
+      {mode: 7, name: "reflect_y=-x"}
+    ];
+    
+    let bestTransform = null;
+    let bestScore = null;
+    
+    for(const t of transforms) {
+      const transformed = transformCells(cells, t.mode);
+      const tbb = bboxFromCells(transformed);
+      const tw = tbb.w, th = tbb.h;
+      
+      // Ensure horizontal orientation (W >= H)
+      const canonicalW = Math.max(tw, th);
+      const canonicalH = Math.min(tw, th);
+      const isRotated = tw < th;
+      
+      // Calculate tie-breaking scores
+      const contactY = calculateContactLength(transformed, 'Y');
+      const contactX = calculateContactLength(transformed, 'X');
+      const totalX = transformed.reduce((sum, c) => {
+        const {x} = parseKey(c);
+        return sum + x;
+      }, 0);
+      const totalY = transformed.reduce((sum, c) => {
+        const {y} = parseKey(c);
+        return sum + y;
+      }, 0);
+      
+      const score = {
+        canonicalW,
+        canonicalH,
+        contactY,
+        contactX,
+        totalX,
+        totalY,
+        isRotated,
+        transform: t
+      };
+      
+      if(!bestScore || compareCanonicalScores(score, bestScore) < 0) {
+        bestScore = score;
+        bestTransform = t;
+      }
+    }
+    
+    return {
+      transform: bestTransform,
+      score: bestScore,
+      canonical: transformCells(cells, bestTransform.mode)
+    };
+  }
+
+  function calculateContactLength(cells, edge) {
+    const cellSet = new Set(cells);
+    let maxContact = 0;
+    
+    if(edge === 'Y') {
+      // Check right edge contact - find longest horizontal run
+      const rows = new Map();
+      for(const c of cells) {
+        const {x, y} = parseKey(c);
+        if(!rows.has(y)) rows.set(y, []);
+        rows.get(y).push(x);
+      }
+      
+      for(const [y, xs] of rows) {
+        xs.sort((a,b) => a - b);
+        let currentRun = 1;
+        for(let i = 1; i < xs.length; i++) {
+          if(xs[i] === xs[i-1] + 1) {
+            currentRun++;
+          } else {
+            maxContact = Math.max(maxContact, currentRun);
+            currentRun = 1;
+          }
+        }
+        maxContact = Math.max(maxContact, currentRun);
+      }
+    } else if(edge === 'X') {
+      // Check top edge contact - find longest vertical run
+      const cols = new Map();
+      for(const c of cells) {
+        const {x, y} = parseKey(c);
+        if(!cols.has(x)) cols.set(x, []);
+        cols.get(x).push(y);
+      }
+      
+      for(const [x, ys] of cols) {
+        ys.sort((a,b) => a - b);
+        let currentRun = 1;
+        for(let i = 1; i < ys.length; i++) {
+          if(ys[i] === ys[i-1] + 1) {
+            currentRun++;
+          } else {
+            maxContact = Math.max(maxContact, currentRun);
+            currentRun = 1;
+          }
+        }
+        maxContact = Math.max(maxContact, currentRun);
+      }
+    }
+    
+    return maxContact;
+  }
+
+  function compareCanonicalScores(a, b) {
+    // 1. Prefer horizontal orientation (W >= H)
+    if(a.canonicalW !== b.canonicalW) return b.canonicalW - a.canonicalW;
+    if(a.canonicalH !== b.canonicalH) return b.canonicalH - a.canonicalH;
+    
+    // 2. Y edge with more contact length faces right
+    if(a.contactY !== b.contactY) return b.contactY - a.contactY;
+    
+    // 3. Tie breaker: lowest total x coordinates
+    if(a.totalX !== b.totalX) return a.totalX - b.totalX;
+    
+    // 4. X edge with more contact length faces bottom
+    if(a.contactX !== b.contactX) return b.contactX - a.contactX;
+    
+    // 5. Final tie breaker: lowest total y coordinates
+    return a.totalY - b.totalY;
+  }
+
+  function shapeToRPN(item, id){
+    const parts = item.rects.map(r=>{
+      const y1 = r.y + 1, x1 = r.x + 1, y2 = r.y + r.h, x2 = r.x + r.w;
+      return `{ ${y1},${x1} ; ${y2},${x2} }`;
+    });
+    return `< ${id} | ${parts.join(" ")} >`;
+  }
+
+  function shapeToRPNWithAtomic(item, id) {
+    // Get atomic objects
+    const atomicObjects = identifyAtomicObjects(item.rects);
+    
+    // Get canonical form
+    const canonical = getCompositeCanonicalForm(Array.from(item.cells));
+    
+    // Build atomic notation
+    const atomicNotation = atomicObjects.map(atom => 
+      getAtomicNotation(atom.w, atom.h, atom.id)
+    ).join('\n');
+    
+    // Build composite-by-joining notation (pairwise joins discovered from adjacency)
+    const joins = findJoiningPairs(item.rects);
+    let joiningNotation = '';
+    if(joins.length){
+      const parts = [];
+      for(const jp of joins){
+        const aId = jp.a.rotated ? `^ ${jp.a.id}` : jp.a.id;
+        const bId = jp.b.rotated ? `^ ${jp.b.id}` : jp.b.id;
+        parts.push(`< ${id} | < ${aId} | ${formatEdgeRun(jp.a.run)} > < ${bId} | ${formatEdgeRun(jp.b.run)} > >`);
+      }
+      joiningNotation = parts.join('\n');
+    }
+
+    // Build composite notation in canonical form
+    const canonicalRects = [];
+    for(const r of item.rects) {
+      const transformed = transformCells(cellsFromRect(r.x, r.y, r.w, r.h), canonical.transform.mode);
+      const tbb = bboxFromCells(transformed);
+      const y1 = tbb.minY + 1, x1 = tbb.minX + 1, y2 = tbb.maxY + 1, x2 = tbb.maxX + 1;
+      canonicalRects.push(`{ ${y1},${x1} ; ${y2},${x2} }`);
+    }
+    
+    const compositeNotation = `< ${id} | ${canonicalRects.join(" ")} >`;
+    
+    let out = `# Atomic Objects:\n${atomicNotation}`;
+    if(joiningNotation){
+      out += `\n\n# Composite by Joining:\n${joiningNotation}`;
+    }
+    out += `\n\n# Composite Form:\n${compositeNotation}`;
+    return out;
+  }
+
+  function histogram(arr){
+    const map = new Map();
+    for(const v of arr){ map.set(v, (map.get(v)||0)+1); }
+    const entries = Array.from(map.entries()).sort((a,b)=>a[0]-b[0]);
+    return entries.map(([k,v])=>`${k}:${v}`).join(", ");
+  }
+
+  function updateParamsJSON(){
+    const params = currentParams();
+    paramsJSON.value = JSON.stringify(params, null, 2);
+  }
+
+  function setShapes(list){
+    SHAPES = list;
+    idx.max = Math.max(0, list.length-1);
+    idx.value = "0";
+    idxNow.textContent = list.length ? "1" : "0";
+    idxMax.textContent = String(list.length);
+    if(list.length){
+      drawShape(list[0]);
+      drawPermutations(list[0]);
+      kvArea.textContent = list[0].area;
+      kvRects.textContent = list[0].rects.length;
+      rpnCurrent.value = shapeToRPNWithAtomic(list[0], "S0001");
+    } else {
+      const mainCtx = canvas.getContext('2d');
+      mainCtx.clearRect(0,0,canvas.width,canvas.height);
+      permTiles.forEach(p=>p.ctx.clearRect(0,0,p.canvas.width,p.canvas.height));
+      kvArea.textContent = "—";
+      kvRects.textContent = "—";
+      rpnCurrent.value = "";
+    }
+    statCount.textContent = `${list.length.toLocaleString()} shapes`;
+    statAreas.textContent = list.length ? `area histogram: ${histogram(list.map(s=>s.area))}` : "area histogram: —";
+    statRects.textContent = list.length ? `rectangles histogram: ${histogram(list.map(s=>s.rects.length))}` : "rectangles histogram: —";
+    updateParamsJSON();
+  }
+
+  function showIndex(i){
+    if(!SHAPES.length) return;
+    const idxClamped = Math.max(0, Math.min(SHAPES.length-1, i));
+    idx.value = String(idxClamped);
+    idxNow.textContent = String(idxClamped+1);
+    const item = SHAPES[idxClamped];
+    drawShape(item);
+    drawPermutations(item);
+    kvArea.textContent = item.area;
+    kvRects.textContent = item.rects.length;
+    rpnCurrent.value = shapeToRPNWithAtomic(item, `S${String(idxClamped+1).padStart(4,"0")}`);
+  }
+
+  function playLoop(){
+    if(!PLAY || !SHAPES.length) return;
+    const cur = Number(idx.value);
+    const nextIdx = (cur+1) % SHAPES.length;
+    showIndex(nextIdx);
+    TIMER = setTimeout(playLoop, Math.max(50, Number(speed.value)||350));
+  }
+
+  // ---------- Enumeration core
+  function enumerate(params, onYield, onDone){
+    const {
+      canvasW, canvasH,
+      baseMinW, baseMinH, allowLargerBase, baseMaxArea,
+      basePlacementMode, baseX, baseY,
+      appendMinW, appendMinH,
+      maxRects, minArea, maxArea, minContactLength, fullContactRequired,
+      maxResults, frontierMode, shuffleMode, rng
+    } = params;
+
+    STOP = false;
+    const found = new Set();      // canonical strings for recorded results / seen shapes
+    const expanded = new Set();   // expanded-state keys (canonical + anchor)
+    const results = [];
+
+    const baseDims = [];
+    for(let w = baseMinW; w <= canvasW; w++){
+      for(let h = baseMinH; h <= canvasH; h++){
+        const A = w*h;
+        if(!allowLargerBase && (w!==baseMinW || h!==baseMinH)) continue;
+        if(A > baseMaxArea) continue;
+        baseDims.push([w,h]);
+      }
+    }
+
+    const appendDimsPool = [];
+    for(let w = appendMinW; w <= canvasW; w++){
+      for(let h = appendMinH; h <= canvasH; h++){
+        if(w<h) appendDimsPool.push([h,w]); else appendDimsPool.push([w,h]);
+      }
+    }
+    const appendDimsOnce = appendDimsPool.slice();
+    if(shuffleMode === 'once') shuffle(appendDimsOnce, rng);
+
+    function basePositions(bw,bh){
+      const maxX = canvasW - bw, maxY = canvasH - bh;
+      const positions = [];
+      switch(basePlacementMode){
+        case 'fixed':
+          positions.push([Math.max(0, Math.min(maxX, baseX)), Math.max(0, Math.min(maxY, baseY))]); break;
+        case 'cornerTL': positions.push([0,0]); break;
+        case 'cornerTR': positions.push([maxX,0]); break;
+        case 'cornerBL': positions.push([0,maxY]); break;
+        case 'cornerBR': positions.push([maxX,maxY]); break;
+        case 'centre': positions.push([Math.floor((canvasW-bw)/2), Math.floor((canvasH-bh)/2)]); break;
+        case 'enumerate': for(let y=0;y<=maxY;y++) for(let x=0;x<=maxX;x++) positions.push([x,y]); break;
+        case 'randomOnce': positions.push([Math.floor(rng()*(maxX+1)), Math.floor(rng()*(maxY+1))]); break;
+        case 'randomPerSeed': positions.push([Math.floor(rng()*(maxX+1)), Math.floor(rng()*(maxY+1))]); break;
+      }
+      return positions;
+    }
+
+    function maybeRecord(shapeSet, rects, baseHL){
+      const arr = Array.from(shapeSet);
+      const bb = bboxFromCells(arr);
+      if(bb.w > canvasW || bb.h > canvasH) return false;
+      const area = arr.length;
+      if(area > maxArea) return false;
+      if(!holeFree(arr, canvasW, canvasH)) return false;
+      const canon = canonicalString(arr, SYM_DEDUP);
+      if(found.has(canon)) return false;
+      found.add(canon);
+      if(area >= minArea && area <= maxArea){
+        const item = {cells: new Set(arr), rects: rects.slice(), area, canon, bbox:{w:bb.w,h:bb.h}, baseHL: baseHL ? baseHL.slice() : []};
+        results.push(item);
+        if(results.length <= maxResults) onYield(item, results.length);
+      }
+      return true;
+    }
+
+    const frontier = [];
+    function pushFrontier(state){ frontier.push(state); }
+    function popFrontier(){
+      if(frontierMode === 'dfs') return frontier.pop();
+      if(frontierMode === 'rnd') { const i = Math.floor(rng()*frontier.length); return frontier.splice(i,1)[0]; }
+      return frontier.shift();
+    }
+
+    function seedBases(){
+      let seeds = 0;
+      for(const [bw,bh] of baseDims){
+        let positions = basePositions(bw,bh);
+        if(basePlacementMode==='enumerate' && shuffleMode==='once') shuffle(positions, rng);
+        for(const [sx,sy] of positions){
+          const baseCells = new Set(cellsFromRect(sx,sy,bw,bh));
+          const insW = Math.max(baseMinW, Math.min(bw, baseMinW));
+          const insH = Math.max(baseMinH, Math.min(bh, baseMinH));
+          const hl = cellsFromRect(sx, sy, insW, insH);
+          maybeRecord(baseCells, [{x:sx,y:sy,w:bw,h:bh}], hl);
+
+          const eKey = expandedKey(baseCells, SYM_DEDUP);
+          if(maxRects>0 && bw*bh <= maxArea && !expanded.has(eKey)){
+            expanded.add(eKey);
+            pushFrontier({cells: baseCells, rects: [{x:sx,y:sy,w:bw,h:bh}], area: bw*bh, baseHL: hl});
+          }
+          seeds++;
+          if(STOP || results.length >= maxResults) break;
+        }
+        if(STOP || results.length >= maxResults) break;
+      }
+      return seeds;
+    }
+
+    function expandState(state){
+      const {cells, rects, area, baseHL} = state;
+      if(rects.length-1 >= maxRects) return;
+
+      const dimsList = (shuffleMode==='perStep') ? shuffle(appendDimsPool.slice(), rng) : appendDimsOnce;
+
+      for(const [w,h] of dimsList){
+        const orientations = (w===h) ? [[w,h]] : [[w,h],[h,w]];
+        for(const [rw,rh] of orientations){
+          const maxX = canvasW - rw, maxY = canvasH - rh;
+          let xs = Array.from({length:maxX+1}, (_,i)=>i);
+          let ys = Array.from({length:maxY+1}, (_,i)=>i);
+          if(shuffleMode==='perStep') { shuffle(xs, rng); shuffle(ys, rng); }
+
+          for(const y of ys){
+            for(const x of xs){
+              const rcells = cellsFromRect(x,y,rw,rh);
+              if(overlaps(rcells, cells)) continue;
+              if(!meetsContactRequirements(rcells, cells, minContactLength, fullContactRequired)) continue;
+              const newArea = area + rcells.length;
+              if(newArea > maxArea) continue;
+
+              const newSet = new Set(cells);
+              for(const c of rcells) newSet.add(c);
+
+              maybeRecord(newSet, rects.concat([{x,y,w:rw,h:rh}]), baseHL);
+
+              const eKey = expandedKey(newSet, SYM_DEDUP);
+              if(rects.length < maxRects && newArea <= maxArea && !expanded.has(eKey)){
+                expanded.add(eKey);
+                pushFrontier({cells: newSet, rects: rects.concat([{x,y,w:rw,h:rh}]), area: newArea, baseHL});
+              }
+              if(results.length >= maxResults || STOP) return;
+            }
+            if(results.length >= maxResults || STOP) return;
+          }
+          if(results.length >= maxResults || STOP) return;
+        }
+        if(results.length >= maxResults || STOP) return;
+      }
+    }
+
+    async function run(){
+      let step = 0;
+      const seeded = seedBases();
+      progress.textContent = `Seeded ${seeded.toLocaleString()} base placements…`;
+
+      while(frontier.length && !STOP && results.length < maxResults){
+        const state = popFrontier();
+        expandState(state);
+        step++;
+        if(step % 50 === 0){
+          await new Promise(r=>setTimeout(r, 0));
+          progress.textContent = `Exploring… states ${step.toLocaleString()} | shapes ${results.length.toLocaleString()}`;
+        }
+      }
+      onDone(results);
+    }
+    run();
+  }
+
+  // ---------- Export
+  function currentParams(){
+    return {
+      canvasW: Number(W.value),
+      canvasH: Number(H.value),
+      baseMinW: Number(baseMinW.value),
+      baseMinH: Number(baseMinH.value),
+      allowLargerBase: !!allowLargerBase.checked,
+      baseMaxArea: Number(baseMaxArea.value),
+      basePlacementMode: basePlacementMode.value,
+      baseX: Number(baseX.value),
+      baseY: Number(baseY.value),
+      appendMinW: Number(appendMinW.value),
+      appendMinH: Number(appendMinH.value),
+      maxRects: Number(maxRects.value),
+      minArea: Number(minArea.value),
+      maxArea: Number(maxArea.value),
+      minContactLength: Number(minContactLength.value),
+      fullContactRequired: !!fullContactRequired.checked,
+      maxResults: Number(maxResults.value),
+      dedupeSym: true, // always on
+      frontierMode: frontierMode.value,
+      shuffleMode: shuffleMode.value,
+      randSeed: Number(randSeed.value)
+    };
+  }
+
+  function download(filename, content, mime){
+    const blob = new Blob([content], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function shapesToJSON(){
+    const meta = { created: new Date().toISOString(), params: currentParams() };
+    const shapes = SHAPES.map((s,i)=>({
+      id: `S${String(i+1).padStart(4,'0')}`,
+      area: s.area,
+      rects: s.rects.map(r=>({x:r.x,y:r.y,w:r.w,h:r.h})),
+      baseHL: Array.from(s.baseHL||[])
+    }));
+    return JSON.stringify({meta, shapes}, null, 2);
+  }
+
+  function shapesToRPNList(){
+    const lines = [];
+    for(let i=0;i<SHAPES.length;i++){
+      const id = `S${String(i+1).padStart(4,"0")}`;
+      lines.push(shapeToRPNWithAtomic(SHAPES[i], id));
+    }
+    const hdr = `# RPN list exported ${new Date().toISOString()} | count=${SHAPES.length}\n`;
+    return hdr + lines.join("\n\n");
+  }
+
+  btnExportJSON.addEventListener('click', ()=>{
+    if(!SHAPES.length){ alert('No shapes to export.'); return; }
+    const name = `rect_enumeration_${Date.now()}.json`;
+    download(name, shapesToJSON(), "application/json");
+  });
+
+  btnExportRPN.addEventListener('click', ()=>{
+    if(!SHAPES.length){ alert('No shapes to export.'); return; }
+    const name = `rect_enumeration_rpn_${Date.now()}.txt`;
+    download(name, shapesToRPNList(), "text/plain");
+  });
+
+  btnExportCurrentRPN.addEventListener('click', async ()=>{
+    if(!SHAPES.length) return;
+    const i = Number(idx.value);
+    const txt = shapeToRPNWithAtomic(SHAPES[i], `S${String(i+1).padStart(4,"0")}`);
+    rpnCurrent.value = txt;
+    try{ await navigator.clipboard.writeText(txt); }catch(_){}
+  });
+
+  // ---------- Import (RPN)
+  const RPN_MULTI_RE = /<\s*([A-Za-z][A-Za-z0-9_]*)\s*\|\s*([^>]+?)\s*>/g;
+  const RPN_PART_RE  = /\{\s*([+-]?[1-9]\d*)\s*,\s*([+-]?[1-9]\d*)\s*;\s*([+-]?[1-9]\d*)\s*,\s*([+-]?[1-9]\d*)\s*\}/g;
+
+  function rpnToShapeObjects(text){
+    const shapes = [];
+    const seenCanon = new Set();
+
+    const matches = [...text.matchAll(RPN_MULTI_RE)];
+    for(const m of matches){
+      const body = m[2];
+      const rects = [];
+      for(const p of body.matchAll(RPN_PART_RE)){
+        const y1 = parseInt(p[1],10), x1 = parseInt(p[2],10), y2 = parseInt(p[3],10), x2 = parseInt(p[4],10);
+        if(!(y2>=y1 && x2>=x1)) continue;
+        const h = y2 - y1 + 1, w = x2 - x1 + 1;
+        rects.push({x: x1-1, y: y1-1, w, h});
+      }
+      if(!rects.length) continue;
+
+      const cellSet = new Set();
+      rects.forEach(r=> cellsFromRect(r.x,r.y,r.w,r.h).forEach(c=>cellSet.add(c)));
+      const canon = canonicalString(Array.from(cellSet), true);
+      if(seenCanon.has(canon)) continue;
+      seenCanon.add(canon);
+
+      const area = Array.from(cellSet).length;
+      const bb = bboxFromCells(Array.from(cellSet));
+      const bmW = Number(baseMinW.value), bmH = Number(baseMinH.value);
+      let baseHL = [];
+      for(const r of rects){
+        if((r.w>=bmW && r.h>=bmH) || (r.w>=bmH && r.h>=bmW)){
+          const useW = Math.min(r.w, bmW), useH = Math.min(r.h, bmH);
+          baseHL = cellsFromRect(r.x, r.y, useW, useH);
+          break;
+        }
+      }
+      shapes.push({cells: cellSet, rects, area, canon, bbox:{w:bb.w,h:bb.h}, baseHL});
+    }
+    return shapes;
+  }
+
+  btnImportRPN.addEventListener('click', ()=>{
+    const txt = rpnIn.value.trim();
+    if(!txt){ alert('Paste one or more RPN composites.'); return; }
+    const imported = rpnToShapeObjects(txt);
+    if(!imported.length){ alert('No valid composites found.'); return; }
+
+    const existing = new Set(SHAPES.map(s=>canonicalString(Array.from(s.cells), true)));
+    const merged = (importJsonMode.value==='replace' || importRpnMode.value==='replace') ? [] : SHAPES.slice();
+    for(const s of imported){
+      const c = canonicalString(Array.from(s.cells), true);
+      if(existing.has(c)) continue;
+      merged.push(s);
+      existing.add(c);
+    }
+    setShapes(merged);
+    progress.textContent = `Imported ${imported.length} shapes (after de-dup: ${merged.length}).`;
+  });
+
+  // ---------- Import (JSON)
+  function fileToText(file){
+    return new Promise((resolve,reject)=>{
+      const fr = new FileReader();
+      fr.onerror = ()=>reject(fr.error);
+      fr.onload = ()=>resolve(fr.result);
+      fr.readAsText(file);
+    });
+  }
+
+  btnImportJSON.addEventListener('click', async ()=>{
+    const f = jsonFile.files && jsonFile.files[0];
+    if(!f){ alert('Choose a JSON file exported by this tool.'); return; }
+    try{
+      const txt = await fileToText(f);
+      const blob = JSON.parse(txt);
+      if(!blob || !Array.isArray(blob.shapes)) throw new Error('Invalid JSON shape payload.');
+
+      const existing = new Set(SHAPES.map(s=>canonicalString(Array.from(s.cells), true)));
+      const merged = (importJsonMode.value==='replace') ? [] : SHAPES.slice();
+
+      for(const s of blob.shapes){
+        const rects = (s.rects||[]).map(r=>({x:r.x|0, y:r.y|0, w:r.w|0, h:r.h|0}));
+        const cells = new Set();
+        rects.forEach(r=> cellsFromRect(r.x,r.y,r.w,r.h).forEach(c=>cells.add(c)));
+        const canon = canonicalString(Array.from(cells), true);
+        if(existing.has(canon)) continue;
+        const bb = bboxFromCells(Array.from(cells));
+        const baseHL = Array.isArray(s.baseHL) ? s.baseHL.slice() : [];
+        merged.push({cells, rects, area: Array.from(cells).length, canon, bbox:{w:bb.w,h:bb.h}, baseHL});
+        existing.add(canon);
+      }
+      setShapes(merged);
+      progress.textContent = `JSON import complete. Total shapes: ${merged.length}.`;
+    }catch(err){
+      alert('Import failed: ' + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  // ---------- Parameters JSON handlers
+  btnCopyParams.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(paramsJSON.value);
+      progress.textContent = "Parameters copied to clipboard.";
+    }catch(err){
+      alert('Copy failed: ' + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  btnLoadParams.addEventListener('click', ()=>{
+    paramsFile.click();
+  });
+
+  paramsFile.addEventListener('change', async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    try{
+      const txt = await fileToText(f);
+      const params = JSON.parse(txt);
+      
+      // Validate and load parameters
+      if(params.canvasW) W.value = Math.max(2, Math.min(64, params.canvasW));
+      if(params.canvasH) H.value = Math.max(2, Math.min(64, params.canvasH));
+      if(params.baseMinW) baseMinW.value = Math.max(1, Math.min(64, params.baseMinW));
+      if(params.baseMinH) baseMinH.value = Math.max(1, Math.min(64, params.baseMinH));
+      if(typeof params.allowLargerBase === 'boolean') allowLargerBase.checked = params.allowLargerBase;
+      if(params.baseMaxArea) baseMaxArea.value = Math.max(1, Math.min(4096, params.baseMaxArea));
+      if(params.basePlacementMode) basePlacementMode.value = params.basePlacementMode;
+      if(params.baseX) baseX.value = Math.max(0, Math.min(63, params.baseX));
+      if(params.baseY) baseY.value = Math.max(0, Math.min(63, params.baseY));
+      if(params.appendMinW) appendMinW.value = Math.max(1, Math.min(64, params.appendMinW));
+      if(params.appendMinH) appendMinH.value = Math.max(1, Math.min(64, params.appendMinH));
+      if(params.maxRects) maxRects.value = Math.max(0, Math.min(20, params.maxRects));
+      if(params.minArea) minArea.value = Math.max(1, Math.min(2048, params.minArea));
+      if(params.maxArea) maxArea.value = Math.max(1, Math.min(2048, params.maxArea));
+      if(params.minContactLength) minContactLength.value = Math.max(1, Math.min(64, params.minContactLength));
+      if(typeof params.fullContactRequired === 'boolean') fullContactRequired.checked = params.fullContactRequired;
+      if(params.maxResults) maxResults.value = Math.max(1, Math.min(50000, params.maxResults));
+      if(params.frontierMode) frontierMode.value = params.frontierMode;
+      if(params.shuffleMode) shuffleMode.value = params.shuffleMode;
+      if(params.randSeed) randSeed.value = Math.max(0, Math.min(4294967295, params.randSeed));
+      
+      updateParamsJSON();
+      progress.textContent = "Parameters loaded successfully.";
+    }catch(err){
+      alert('Load failed: ' + (err && err.message ? err.message : String(err)));
+    }
+  });
+
+  // ---------- Generate / Stop / Navigation
+  btnGen.addEventListener('click', ()=>{
+    const rng = mulberry32(Number(randSeed.value)>>>0);
+    const params = {
+      canvasW: Number(W.value),
+      canvasH: Number(H.value),
+      baseMinW: Number(baseMinW.value),
+      baseMinH: Number(baseMinH.value),
+      allowLargerBase: !!allowLargerBase.checked,
+      baseMaxArea: Number(baseMaxArea.value),
+      basePlacementMode: basePlacementMode.value,
+      baseX: Number(baseX.value),
+      baseY: Number(baseY.value),
+      appendMinW: Number(appendMinW.value),
+      appendMinH: Number(appendMinH.value),
+      maxRects: Number(maxRects.value),
+      minArea: Number(minArea.value),
+      maxArea: Number(maxArea.value),
+      minContactLength: Number(minContactLength.value),
+      fullContactRequired: !!fullContactRequired.checked,
+      maxResults: Number(maxResults.value),
+      frontierMode: frontierMode.value,
+      shuffleMode: shuffleMode.value,
+      rng
+    };
+    STOP = false;
+    btnGen.disabled = true;
+    btnStop.disabled = false;
+    progress.textContent = "Seeding…";
+    setShapes([]);
+    enumerate(params, (item, n)=>{
+      if(n === 1) { drawShape(item); drawPermutations(item); }
+      statCount.textContent = `${n.toLocaleString()} shapes`;
+    }, (results)=>{
+      btnGen.disabled = false;
+      btnStop.disabled = true;
+      setShapes(results);
+      progress.textContent = results.length ? `Done. ${results.length.toLocaleString()} shapes.` : "Done. 0 shapes.";
+    });
+  });
+
+  btnStop.addEventListener('click', ()=>{
+    STOP = true;
+    btnStop.disabled = true;
+    btnGen.disabled = false;
+    progress.textContent = "Stopped.";
+  });
+
+  idx.addEventListener('input', ()=> showIndex(Number(idx.value)));
+  prev.addEventListener('click', ()=> showIndex(Number(idx.value)-1));
+  next.addEventListener('click', ()=> showIndex(Number(idx.value)+1));
+
+  play.addEventListener('click', ()=>{
+    if(!SHAPES.length) return;
+    PLAY = !PLAY;
+    play.textContent = PLAY ? "Pause" : "Play";
+    if(PLAY){ playLoop(); } else { clearTimeout(TIMER); }
+  });
+  speed.addEventListener('change', ()=>{
+    if(PLAY){ clearTimeout(TIMER); playLoop(); }
+  });
+
+  canvas.addEventListener('wheel', (e)=>{
+    if(!SHAPES.length) return;
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY);
+    showIndex(Number(idx.value) + delta);
+  }, {passive:false});
+
+  window.addEventListener('keydown', (e)=>{
+    if(e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+    if(e.key === 'ArrowRight'){ showIndex(Number(idx.value)+1); }
+    if(e.key === 'ArrowLeft'){ showIndex(Number(idx.value)-1); }
+    if(e.key === ' '){ e.preventDefault(); play.click(); }
+    if(e.key.toLowerCase() === 'g'){ showGrid.checked = !showGrid.checked; showIndex(Number(idx.value)); }
+    if(e.key === '.'){ speed.value = Math.max(50, Number(speed.value)-50); }
+    if(e.key === ','){ speed.value = Math.min(2000, Number(speed.value)+50); }
+  });
+
+  // ---------- Canvas DPI fit (main + permutations)
+  function fitCanvas(){
+    const r = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.round(rect.width * r);
+    canvas.height = Math.round(rect.width * r);
+    canvas.style.height = `${rect.width}px`;
+
+    // also refresh perms if a shape is shown
+    if(SHAPES.length){
+      drawPermutations(SHAPES[Number(idx.value)]);
+    }
+  }
+  window.addEventListener('resize', ()=>{ fitCanvas(); showIndex(Number(idx.value)); });
+  fitCanvas();
+  
+  // Update parameters JSON when any parameter changes
+  const allInputs = [W, H, baseMinW, baseMinH, allowLargerBase, baseMaxArea, basePlacementMode, baseX, baseY, 
+                    appendMinW, appendMinH, maxRects, minArea, maxArea, minContactLength, fullContactRequired,
+                    maxResults, showBBox, showGrid, frontierMode, shuffleMode, randSeed];
+  allInputs.forEach(input => {
+    if(input) input.addEventListener('change', updateParamsJSON);
+    if(input) input.addEventListener('input', updateParamsJSON);
+  });
+  
+  // Initial update
+  updateParamsJSON();
+  progress.textContent = "Set parameters and Generate.";
+})();
+</script>
+</body>
+</html>
