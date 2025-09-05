@@ -1,0 +1,2738 @@
+<!doctype html>
+<!-- atomic_studio_v5_light.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atomic Shape Studio — Rectangular Polyomino (Atomic Only, Light UI)</title>
+<style>
+  :root{
+    /* Light theme */
+    --bg:#f7f9fc;
+    --panel:#ffffff;
+    --panel-2:#f1f4f8;
+    --ink:#0b1526;
+    --ink-2:#55637a;
+    --accent:#1c6ef2;
+    --ok:#059669;
+    --warn:#b45309;
+    --err:#e11d48;
+
+    --grid:#e3e8f0;
+    --grid-strong:#cbd5e1;
+
+    --cell-border:#b6c2d0;
+
+    --sel:#c68400;     /* selection stroke */
+    --hover:#2563eb;   /* hover stroke */
+    --contact:#fb923c; /* contact highlight */
+    --contact2:#10b981;
+
+    --ghost:#93c5fd55;
+    --ghost-line:#60a5fa;
+
+    --invalid:#fecaca88;
+    --invalid-line:#f87171;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  #app{
+    height:100%;
+    display:grid;
+    grid-template-columns:300px 1fr 380px;
+    grid-template-rows:auto 1fr auto;
+    grid-template-areas:
+      "header header header"
+      "left   main   right"
+      "footer footer footer";
+    min-width:0; min-height:0;
+  }
+  header{
+    grid-area:header;display:flex;align-items:center;gap:12px;padding:10px 14px;
+    background:var(--panel-2);border-bottom:1px solid #e5eaf1
+  }
+  header h1{font-size:16px;margin:0;font-weight:700}
+  #left{grid-area:left;background:var(--panel);border-right:1px solid #e5eaf1;overflow:auto;min-width:0}
+  #right{grid-area:right;background:var(--panel);border-left:1px solid #e5eaf1;overflow:auto;min-width:0}
+  footer{
+    grid-area:footer;padding:8px 12px;background:var(--panel-2);border-top:1px solid #e5eaf1;color:var(--ink-2);
+    display:flex;justify-content:space-between;gap:12px;white-space:nowrap;overflow:auto
+  }
+  #main{
+    grid-area:main; position:relative; min-width:0; min-height:0; background:#f8fbff; overflow:hidden;
+  }
+  #canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .toolbar{
+    position:absolute; left:8px; top:8px; right:8px;
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    background:#ffffffd6; border:1px solid #e2e8f0; border-radius:10px; padding:8px; backdrop-filter:blur(6px); z-index:2
+  }
+  .toolbtn input{display:none}
+  .toolbtn label{
+    display:inline-block; padding:6px 10px; border:1px solid #d0d7e2; border-radius:8px; cursor:pointer; background:#f3f6fb; color:var(--ink);
+    user-select:none
+  }
+  .toolbtn input:checked + label{background:#1c6ef2; color:#fff; border-color:#1658be}
+  .sep{width:1px;height:24px;background:#e2e8f0;margin:0 4px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid #d0d7e2;border-radius:999px;background:#f3f6fb}
+
+  .section{padding:12px 14px;border-bottom:1px solid #e5eaf1}
+  .section h2{margin:0 0 8px;font-size:13px;color:#0b1526;font-weight:700}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .col{display:flex;flex-direction:column;gap:6px}
+  .muted{color:var(--ink-2)}
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:6px;align-items:center}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  label{font-size:12px;color:var(--ink-2)}
+  input[type="text"],input[type="number"],select,textarea{
+    background:#fff;border:1px solid #d7dde7;color:var(--ink);border-radius:6px; padding:8px 10px;font-size:13px;outline:none;min-width:0
+  }
+  input[type="number"]{width:100px}
+  button{
+    background:#f3f6fb;border:1px solid #d0d7e2;color:var(--ink);border-radius:8px;
+    padding:8px 10px;font-size:13px;cursor:pointer;user-select:none;transition:.12s;white-space:nowrap
+  }
+  button:hover{border-color:#b8c2d3;background:#e9eef7}
+  button.primary{background:#1c6ef2;color:#fff;border-color:#1658be}
+  button.good{background:#059669;color:#fff;border-color:#047857}
+  button.ghost{background:#fff;border-color:#d0d7e2}
+  .list{display:flex;flex-direction:column;border:1px solid #e5eaf1;border-radius:10px;overflow:hidden}
+  .list .item{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border-top:1px solid #e5eaf1;background:#fff}
+  .list .item:first-child{border-top:none}
+  .status{padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#fff}
+  .ok{border-color:#bbf7d0;background:#f0fdf4}
+  .warn{border-color:#fde68a;background:#fffbeb}
+  .err{border-color:#fecdd3;background:#fff1f2}
+  .contactItem{padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;background:#fafcff;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Atomic Shape Studio</h1>
+    <div class="muted">Light UI. Atomic rectangles only. No overlap. Contacts highlighted with edge notation (X top, Y right, -X bottom, -Y left).</div>
+  </header>
+
+  <aside id="left">
+    <div class="section">
+      <h2>Atomic Palette</h2>
+      <div class="row">
+        <div class="col">
+          <label>Identifier</label>
+          <input id="atomId" type="text" placeholder="R1" value="R1">
+        </div>
+        <div class="col">
+          <label>Height H</label>
+          <input id="atomH" type="number" min="1" step="1" value="3">
+        </div>
+        <div class="col">
+          <label>Width W</label>
+          <input id="atomW" type="number" min="1" step="1" value="4">
+        </div>
+        <button id="addAtom" class="primary">Add / Update</button>
+      </div>
+      <div class="section" style="padding:10px 0 0 0;border:none">
+        <div class="list" id="atomList"></div>
+      </div>
+      <div class="row" style="padding:8px 14px">
+        <button id="placeFirst" class="good">Place Selected</button>
+        <button id="clearPalette" class="ghost">Clear Palette</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Grid</h2>
+      <div class="row">
+        <label>Cell size</label>
+        <input id="cellSize" type="number" min="16" max="96" step="2" value="48" style="width:90px">
+        <label>Bold every 5</label>
+        <input id="boldGrid" type="checkbox" checked>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>ID Consolidation</h2>
+      <div class="muted">Comprehensive ID consolidation: Clean up and reassign sequential IDs for all atomic objects, composite objects, and instances. Only keeps objects actually used on canvas.</div>
+      <div class="row" style="margin-top:8px">
+        <button id="consolidateIds" class="good">Consolidate IDs</button>
+        <button id="resetConsolidation" class="ghost">Reset Maps</button>
+      </div>
+      <div id="consolidationStats" class="status" style="margin-top:8px; display:none;">
+        <div class="muted">Consolidation complete</div>
+        <div class="row" style="margin-top:8px">
+          <button id="copyConsolidation" class="ghost">Copy Stats</button>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <main id="main">
+    <canvas id="canvas"></canvas>
+    <div class="toolbar">
+      <div class="toolbtn">
+        <input type="radio" name="tool" id="toolSelect" checked>
+        <label for="toolSelect">Select/Move</label>
+      </div>
+      <div class="toolbtn">
+        <input type="radio" name="tool" id="toolDraw">
+        <label for="toolDraw">Draw Rectangle</label>
+      </div>
+      <div class="sep"></div>
+      <button id="undoBtn" class="ghost" title="Ctrl+Z">Undo</button>
+      <button id="redoBtn" class="ghost" title="Ctrl+Y">Redo</button>
+      <div class="sep"></div>
+      <span class="pill">Hover: <span id="hoverLabel" class="mono">—</span></span>
+      <span class="pill">Selected: <span id="selBadge" class="mono">—</span></span>
+      <button id="bringFront" class="ghost">Bring to Front</button>
+      <button id="sendBack" class="ghost">Send to Back</button>
+    </div>
+  </main>
+
+  <aside id="right">
+    <div class="section">
+      <h2>Selection</h2>
+      <div id="selStatus" class="status">No selection</div>
+      <div class="kv" style="margin-top:8px">
+        <div>Label</div><div class="mono" id="selLabel">—</div>
+        <div>Dims (H×W)</div><div class="mono" id="selDims">—</div>
+        <div>Pos (dy,dx)</div><div class="mono" id="selPos">—</div>
+        <div>Canonical</div><div class="mono" id="selCanon">—</div>
+        <div>Notation</div><div class="mono" id="selNotation">—</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="copySelection" class="ghost">Copy Selection</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="toggleHat">Toggle ^</button>
+        <button id="duplicate">Duplicate</button>
+        <button id="deleteSel">Delete</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Resize / Re-shape</h2>
+      <div class="muted">Drag handles on the shape (corners/edges) or the top rotate handle. Numeric edits apply here. Default applies to this shape only (detaches as new atom). Overlaps are blocked.</div>
+      <div class="row" style="margin-top:8px">
+        <div class="col">
+          <label>H (used)</label>
+          <input id="editH" type="number" min="1" step="1" value="1">
+        </div>
+        <div class="col">
+          <label>W (used)</label>
+          <input id="editW" type="number" min="1" step="1" value="1">
+        </div>
+        <div class="col">
+          <label>dy</label>
+          <input id="editDY" type="number" step="1" value="1">
+        </div>
+        <div class="col">
+          <label>dx</label>
+          <input id="editDX" type="number" step="1" value="1">
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <input id="applyAll" type="checkbox">
+        <label for="applyAll">Apply to all with same ID</label>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="applyNumeric" class="primary">Apply</button>
+        <button id="detachNow" class="ghost">Detach as new ID</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Contacts</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button id="copyContacts" class="ghost">Copy Contacts</button>
+      </div>
+      <div id="contactList"></div>
+    </div>
+
+    <div class="section">
+      <h2>Scene</h2>
+      <div class="kv">
+        <div>Placements</div><div class="mono" id="countP">0</div>
+        <div>Occupied cells</div><div class="mono" id="countC">0</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="copyScene" class="ghost">Copy Scene</button>
+        <button id="copyAllObjects" class="ghost">Copy All Objects</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="exportSVG" class="primary">Export SVG</button>
+        <button id="exportNotation" class="primary">Export Notation</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="file" id="importFile" accept=".txt" style="display:none">
+        <button id="importNotation" class="primary">Import Notation</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="resetScene" class="ghost">Reset</button>
+        <button id="fitView" class="ghost">Center First</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Help</h2>
+      <div class="muted">
+        - X = top edge, Y = right edge, -X = bottom edge, -Y = left edge (object-local, 1-based lattice).<br>
+        - Canonical atomic stored with W ≥ H. '^' marks vertical use at placement and appears before the id: &lt; ^ R1 | … &gt;.<br>
+        - No overlap is allowed; moves/resizes that would overlap are blocked.<br>
+        - When two shapes touch, contacting edges are highlighted and the edge-run notation is listed.
+      </div>
+    </div>
+  </aside>
+
+  <footer>
+    <div>- Mouse: click to select, drag to move, drag handles to resize, drag/click top handle to rotate. - Keyboard: R toggle ^, Del delete, Ctrl+Z/Y undo/redo</div>
+    <div class="muted">Atomic notation: &lt; id | 1,1 ; H,W &gt; with W ≥ H (canonical).</div>
+  </footer>
+</div>
+
+<script>
+/* ============== Utilities & Colour Generator ============== */
+const byId = (id) => document.getElementById(id);
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const uid = (()=>{let i=1;return (p="P")=>`${p}${i++}`})();
+let _hue = Math.floor(Math.random()*360);
+function nextColor(){
+  // Golden-angle stepping for distinct hues
+  _hue = (_hue + 137.508) % 360;
+  return `hsl(${_hue}, 68%, 62%)`;
+}
+// ID consolidation system
+const ID_CONSOLIDATION = {
+  // Maps canonical dimensions (H,W) to their assigned ID
+  dimensionMap: new Map(),
+  // Maps (H,W,vertical) to placement ID for placements
+  placementMap: new Map(),
+  
+  // Generate canonical ID for atomic rectangle dimensions
+  getCanonicalAtomicId(H, W, prefix="R") {
+    const key = `${H},${W}`;
+    if (this.dimensionMap.has(key)) {
+      return this.dimensionMap.get(key);
+    }
+    
+    // Find next available ID
+    const ids = [...State.reg.map.keys()].filter(k=>k.startsWith(prefix));
+    let max=0;
+    for(const id of ids){
+      const m = id.match(new RegExp(`^${prefix}(\\d+)$`));
+      if(m) max = Math.max(max, parseInt(m[1],10));
+    }
+    const newId = `${prefix}${max+1||1}`;
+    this.dimensionMap.set(key, newId);
+    return newId;
+  },
+  
+  // Get placement ID for a specific base ID and orientation
+  getPlacementId(baseId, vertical, prefix="Q") {
+    const key = `${baseId},${vertical}`;
+    if (this.placementMap.has(key)) {
+      return this.placementMap.get(key);
+    }
+    
+    // Generate new placement ID
+    const ids = State.placements.map(p => p.uid).filter(k=>k.startsWith(prefix));
+    let max=0;
+    for(const id of ids){
+      const m = id.match(new RegExp(`^${prefix}(\\d+)$`));
+      if(m) max = Math.max(max, parseInt(m[1],10));
+    }
+    const newId = `${prefix}${max+1||1}`;
+    this.placementMap.set(key, newId);
+    return newId;
+  },
+  
+  // Consolidate existing objects
+  consolidateAll() {
+    const consolidationStats = {
+      atomicConsolidated: 0,
+      placementConsolidated: 0,
+      compositeConsolidated: 0,
+      duplicatesRemoved: 0
+    };
+    
+    console.log('Starting comprehensive ID consolidation...');
+    
+    // Step 1: Clean up atomic objects - only keep used ones with sequential IDs
+    const usedAtomicIds = new Set();
+    State.placements.forEach(p => {
+      usedAtomicIds.add(p.baseId);
+    });
+    
+    const newAtomicMap = new Map();
+    const atomicIdMapping = new Map();
+    let atomicCounter = 1;
+    
+    for (const oldId of usedAtomicIds) {
+      const oldAtom = State.reg.get(oldId);
+      if (oldAtom) {
+        const newId = `R${atomicCounter}`;
+        const newAtom = new Atomic(newId, oldAtom.H, oldAtom.W);
+        newAtomicMap.set(newId, newAtom);
+        atomicIdMapping.set(oldId, newId);
+        atomicCounter++;
+        consolidationStats.atomicConsolidated++;
+        console.log(`Atomic: ${oldId} -> ${newId} (${oldAtom.H}×${oldAtom.W})`);
+      }
+    }
+    
+    // Update atomic registry
+    State.reg.map = newAtomicMap;
+    
+    // Update placements to use new atomic IDs
+    for (const placement of State.placements) {
+      if (atomicIdMapping.has(placement.baseId)) {
+        placement.baseId = atomicIdMapping.get(placement.baseId);
+      }
+    }
+    
+    // Step 2: Clean up composite objects with sequential IDs
+    const newCompositeObjects = new Map();
+    let compositeCounter = 1;
+    
+    for (const [oldId, compositeInfo] of State.compositeObjects) {
+      const newId = `C${compositeCounter}`;
+      const newCompositeInfo = {
+        ...compositeInfo,
+        id: newId,
+        name: `S${compositeCounter}`
+      };
+      newCompositeObjects.set(newId, newCompositeInfo);
+      compositeCounter++;
+      consolidationStats.compositeConsolidated++;
+      console.log(`Composite: ${oldId} -> ${newId} (${compositeInfo.name} -> S${compositeCounter-1})`);
+    }
+    
+    State.compositeObjects = newCompositeObjects;
+    State.compositeNameCounter = compositeCounter;
+    
+    // Step 3: Clean up instance IDs with sequential IDs
+    let instanceCounter = 1;
+    const instanceIdMapping = new Map(); // oldUid -> newUid
+    
+    // First pass: create mapping
+    for (const placement of State.placements) {
+      const oldUid = placement.uid;
+      const newUid = `Q${instanceCounter}`; // Use Q prefix for consistency
+      instanceIdMapping.set(oldUid, newUid);
+      instanceCounter++;
+    }
+    
+    // Second pass: update placements in place (don't create new objects)
+    for (const placement of State.placements) {
+      const oldUid = placement.uid;
+      const newUid = instanceIdMapping.get(oldUid);
+      placement.uid = newUid;
+      consolidationStats.placementConsolidated++;
+      console.log(`Instance: ${oldUid} -> ${newUid} (${placement.baseId})`);
+    }
+    
+    // Update selected if it exists
+    if (State.selected) {
+      const newSelectedUid = instanceIdMapping.get(State.selected);
+      if (newSelectedUid) {
+        State.selected = newSelectedUid;
+        console.log(`Updated selection: ${State.selected} -> ${newSelectedUid}`);
+      } else {
+        State.selected = null;
+        console.log('Selection cleared - selected object not found after consolidation');
+      }
+    }
+    
+    // Update hovered if it exists
+    if (State.hovered) {
+      const newHoveredUid = instanceIdMapping.get(State.hovered);
+      if (newHoveredUid) {
+        State.hovered = newHoveredUid;
+        console.log(`Updated hover: ${State.hovered} -> ${newHoveredUid}`);
+      } else {
+        State.hovered = null;
+        console.log('Hover cleared - hovered object not found after consolidation');
+      }
+    }
+    
+    // Update drag state references if they exist
+    if (State.resizeDrag && State.resizeDrag.uid) {
+      const newResizeUid = instanceIdMapping.get(State.resizeDrag.uid);
+      if (newResizeUid) {
+        State.resizeDrag.uid = newResizeUid;
+        console.log(`Updated resize drag: ${State.resizeDrag.uid} -> ${newResizeUid}`);
+      } else {
+        State.resizeDrag = null;
+        console.log('Resize drag cleared - object not found after consolidation');
+      }
+    }
+    
+    // Update move drag state if it exists
+    if (draggingMove && draggingMove.uid) {
+      const newMoveUid = instanceIdMapping.get(draggingMove.uid);
+      if (newMoveUid) {
+        draggingMove.uid = newMoveUid;
+        console.log(`Updated move drag: ${draggingMove.uid} -> ${newMoveUid}`);
+      } else {
+        draggingMove = null;
+        console.log('Move drag cleared - object not found after consolidation');
+      }
+    }
+    
+    // Reset consolidation maps
+    this.reset();
+    
+    console.log('Comprehensive ID consolidation completed!');
+    console.log(`Results: ${consolidationStats.atomicConsolidated} atomic, ${consolidationStats.compositeConsolidated} composite, ${consolidationStats.placementConsolidated} instances`);
+    
+    return consolidationStats;
+  },
+  
+  // Reset consolidation maps
+  reset() {
+    this.dimensionMap.clear();
+    this.placementMap.clear();
+  }
+};
+
+const nextAtomId = (prefix="R")=>{
+  // This function is now deprecated in favor of ID_CONSOLIDATION.getCanonicalAtomicId
+  const ids = [...State.reg.map.keys()].filter(k=>k.startsWith(prefix));
+  let max=0;
+  for(const id of ids){
+    const m = id.match(new RegExp(`^${prefix}(\\d+)$`));
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  }
+  return `${prefix}${max+1||1}`;
+};
+
+// Generate unique placement ID (Q1, Q2, Q3, etc.)
+function generateUniquePlacementId(prefix="Q"){
+  const ids = State.placements.map(p => p.uid).filter(k=>k.startsWith(prefix));
+  console.log(`Generating unique ID. Current placements:`, State.placements.map(p => p.uid));
+  console.log(`Existing ${prefix} IDs:`, ids);
+  let max=0;
+  for(const id of ids){
+    const m = id.match(new RegExp(`^${prefix}(\\d+)$`));
+    if(m) max = Math.max(max, parseInt(m[1],10));
+  }
+  const newId = `${prefix}${max+1||1}`;
+  console.log(`Generated new ID: ${newId}`);
+  return newId;
+}
+
+// Generate procedural color for composite objects
+function generateCompositeColor(compositeId) {
+  // Use the composite ID to generate a consistent but varied color
+  let hash = 0;
+  for (let i = 0; i < compositeId.length; i++) {
+    const char = compositeId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  // Generate HSL values for vibrant colors
+  const hue = Math.abs(hash) % 360;
+  const saturation = 70 + (Math.abs(hash >> 8) % 30); // 70-100%
+  const lightness = 45 + (Math.abs(hash >> 16) % 20); // 45-65%
+  
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+/* ===================== Data Model ===================== */
+class Atomic {
+  constructor(id,H,W){
+    if(!Number.isInteger(H)||!Number.isInteger(W)||H<=0||W<=0) throw new Error("H and W must be positive integers.");
+    if(W < H){ const t=W; W=H; H=t; } // canonical W ≥ H
+    this.id=id; this.H=H; this.W=W;
+  }
+  toString(){ return `< ${this.id} | 1,1 ; ${this.H},${this.W} >`; }
+  dims(){ return [this.H,this.W]; }
+}
+
+class Registry {
+  constructor(){ this.map=new Map(); }
+  add(atom){
+    // Use consolidation system to get canonical ID
+    const canonicalId = ID_CONSOLIDATION.getCanonicalAtomicId(atom.H, atom.W);
+    
+    // Check if we already have this atomic with different ID
+    const existing = this.map.get(canonicalId);
+    if(existing && (existing.H!==atom.H || existing.W!==atom.W)){
+      throw new Error(`Duplicate id '${canonicalId}' with conflicting dims (${existing.H}×${existing.W} vs ${atom.H}×${atom.W}).`);
+    }
+    
+    // Update atom ID to canonical ID and store
+    atom.id = canonicalId;
+    this.map.set(canonicalId, atom);
+  }
+  update(id,H,W){
+    const a=this.map.get(id);
+    if(!a) throw new Error(`Unknown atomic id: ${id}`);
+    if(W < H){ const t=W; W=H; H=t; }
+    
+    // Check if this update would change the canonical ID
+    const newCanonicalId = ID_CONSOLIDATION.getCanonicalAtomicId(H, W);
+    if(newCanonicalId !== id) {
+      // Need to move to new canonical ID
+      const newAtom = new Atomic(newCanonicalId, H, W);
+      this.map.delete(id);
+      this.map.set(newCanonicalId, newAtom);
+      
+      // Update all placements using this atomic
+      for(const placement of State.placements) {
+        if(placement.baseId === id) {
+          placement.baseId = newCanonicalId;
+        }
+      }
+    } else {
+      a.H=H; a.W=W;
+    }
+  }
+  get(id){ const a=this.map.get(id); if(!a) throw new Error(`Unknown atomic id: ${id}`); return a; }
+  list(){ return [...this.map.values()]; }
+  clear(){ this.map.clear(); }
+}
+class Placement {
+  constructor({baseId, vshift=[1,1], vertical=false, color=null}){
+    // Generate unique UID for each placement (Q1, Q2, Q3, etc.)
+    this.uid = generateUniquePlacementId();
+    this.baseId = baseId;
+    this.vshift = [...vshift]; // [dy,dx]
+    this.vertical = !!vertical;
+    this.tempDims = null; // [H,W] during live resize
+    this.color = color || nextColor(); // procedural per placement
+  }
+  usedDims(reg){
+    if(this.tempDims) return this.tempDims;
+    const a = reg.get(this.baseId);
+    const [H,W]=a.dims();
+    if(H===W) return [H,W];
+    return this.vertical ? [W,H] : [H,W];
+  }
+  rect(reg){
+    const [H,W] = this.usedDims(reg);
+    const [dy,dx] = this.vshift;
+    return { y1:dy, x1:dx, y2:dy+H-1, x2:dx+W-1, H, W, dy, dx };
+  }
+}
+
+/* ===================== State & History ===================== */
+const State = {
+  reg: new Registry(),
+  placements: [],
+  selected: null,
+  hovered: null,
+  hoveringRotate: false,     // Track if hovering over rotation knob
+  cell: 48,
+  bold5: true,
+  tool: "select",            // "select" | "draw"
+  drawDrag: null,            // {y1,x1,y2,x2, valid:boolean}
+  resizeDrag: null,          // {uid, handle, start:{y1,x1,y2,x2}}
+  contacts: [],
+  compositeObjects: new Map(), // Map of composite ID to composite info
+  compositeNameCounter: 1,
+  lastPlacementIds: '', // Track placement changes for composite updates
+
+  history: [],
+  future: [],
+};
+
+function snapshot(){
+  return JSON.stringify({
+    reg: State.reg.list().map(a=>({id:a.id,H:a.H,W:a.W})),
+    placements: State.placements.map(p=>({uid:p.uid,baseId:p.baseId,vshift:p.vshift,vertical:p.vertical,color:p.color,tempDims:p.tempDims})),
+    selected: State.selected,
+    hovered: State.hovered,
+    cell: State.cell,
+    bold5: State.bold5
+  });
+}
+function restore(snap){
+  const o = JSON.parse(snap);
+  State.reg.clear();
+  for(const a of o.reg) State.reg.add(new Atomic(a.id,a.H,a.W));
+  State.placements = o.placements.map(pp=>{
+    const p=new Placement({baseId:pp.baseId,vshift:pp.vshift,vertical:pp.vertical,color:pp.color});
+    p.uid=pp.uid; p.tempDims=pp.tempDims; return p;
+  });
+  State.selected=o.selected; State.hovered=o.hovered;
+  State.cell=o.cell; State.bold5=o.bold5;
+  refreshPalette();
+  updateRightPanel();
+  draw();
+}
+function pushHistory(){
+  State.history.push(snapshot());
+  if(State.history.length>200) State.history.shift();
+  State.future.length=0;
+}
+function undo(){
+  if(State.history.length===0) return;
+  const cur = snapshot();
+  const prev = State.history.pop();
+  State.future.push(cur);
+  restore(prev);
+}
+function redo(){
+  if(State.future.length===0) return;
+  const cur = snapshot();
+  const next = State.future.pop();
+  State.history.push(cur);
+  restore(next);
+}
+
+/* ===================== Canvas ===================== */
+const canvas = byId('canvas');
+const ctx = canvas.getContext('2d', {alpha:false});
+function resizeCanvas(){
+  const host = byId('main');
+  const r = host.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.ceil(r.width * dpr));
+  canvas.height = Math.max(1, Math.ceil(r.height * dpr));
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  draw();
+}
+new ResizeObserver(resizeCanvas).observe(byId('main'));
+window.addEventListener('resize', resizeCanvas);
+
+/* ===================== Grid & Draw ===================== */
+function drawGrid(){
+  const g = State.cell;
+  const w = canvas.width / (window.devicePixelRatio||1);
+  const h = canvas.height / (window.devicePixelRatio||1);
+  ctx.save();
+  ctx.fillStyle = '#f8fbff';
+  ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = '#e3e8f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let x=0;x<=w;x+=g){ ctx.moveTo(x,0); ctx.lineTo(x,h); }
+  for(let y=0;y<=h;y+=g){ ctx.moveTo(0,y); ctx.lineTo(w,y); }
+  ctx.stroke();
+  if(State.bold5){
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    for(let x=0;x<=w;x+=g*5){ ctx.moveTo(x,0); ctx.lineTo(x,h); }
+    for(let y=0;y<=h;y+=g*5){ ctx.moveTo(0,y); ctx.lineTo(w,y); }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawPlacement(p, drawHandles=false){
+  const r = p.rect(State.reg);
+  const g = State.cell;
+  const x0 = (r.x1-1)*g;
+  const y0 = (r.y1-1)*g;
+
+  for(let yy=0; yy<r.H; yy++){
+    for(let xx=0; xx<r.W; xx++){
+      const sx = x0 + xx*g;
+      const sy = y0 + yy*g;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(sx, sy, g, g);
+      ctx.strokeStyle = getStrokeForFill(p.color);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx, sy, g, g);
+    }
+  }
+  const isSel = (State.selected === p.uid);
+  const isHover = (State.hovered === p.uid);
+  ctx.lineWidth = isSel ? 2 : 1.5;
+  ctx.strokeStyle = isSel ? '#c68400' : isHover ? '#2563eb' : '#8ca2c0';
+  ctx.strokeRect(x0, y0, r.W*g, r.H*g);
+
+  // label
+  ctx.fillStyle = '#0b1526';
+  ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  
+  // Show clean instance ID (Q1, Q2, Q3, etc.)
+  ctx.fillText(`${p.vertical ? '^ ' : ''}${p.baseId} [${p.uid}]`, x0+4, y0+14);
+
+  if(drawHandles && isSel){
+    drawResizeHandles(x0,y0,r.W,r.H,g);
+    // Only show rotation handle for non-square shapes
+    const [H,W] = p.usedDims(State.reg);
+    if(H !== W) {
+      const isHoveringRotate = (State.hovered === p.uid) && State.hoveringRotate;
+      drawRotateHandle(x0,y0,r.W,g,isHoveringRotate);
+    }
+  }
+}
+
+function getStrokeForFill(hsl){
+  // Slightly darken for border
+  // hsl(h, s%, l%) -> reduce l by 12
+  const m = hsl.match(/hsl\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
+  if(!m) return '#b6c2d0';
+  const h=+m[1], s=+m[2], l=Math.max(20, +m[3]-12);
+  return `hsl(${h}, ${s}%, ${l}%)`;
+}
+function drawResizeHandles(x0,y0,W,H,g){
+  const r = Math.max(4, Math.min(8, Math.floor(g*0.18)));
+  const pts = handlePoints(x0,y0,W,H,g);
+  ctx.fillStyle = '#f59e0b';
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+  for(const [px,py] of pts){
+    ctx.beginPath();
+    ctx.arc(px,py,r,0,Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+function drawRotateHandle(x0,y0,W,g,highlight=false){
+  // handle above the top-middle
+  const xm = x0 + (W*g)/2;
+  const y = y0 - Math.min(18, Math.max(12, g*0.35));
+  const radius = Math.max(8, Math.min(12, Math.floor(g*0.25)));
+  
+  // Draw connecting line
+  ctx.strokeStyle = highlight ? '#3b82f6' : '#9ca3af'; 
+  ctx.lineWidth = highlight ? 3 : 2;
+  ctx.beginPath(); 
+  ctx.moveTo(xm, y0); 
+  ctx.lineTo(xm, y); 
+  ctx.stroke();
+  
+  // Draw rotation knob with better visibility
+  ctx.fillStyle = highlight ? '#3b82f6' : '#1c6ef2';
+  ctx.beginPath(); 
+  ctx.arc(xm, y, radius, 0, Math.PI*2); 
+  ctx.fill();
+  
+  // Draw white border
+  ctx.strokeStyle = '#ffffff'; 
+  ctx.lineWidth = highlight ? 3 : 2; 
+  ctx.stroke();
+  
+  // Draw rotation arrow indicator
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 10px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('↻', xm, y);
+}
+function handlePoints(x0,y0,W,H,g){
+  const xm = x0 + (W*g)/2;
+  const ym = y0 + (H*g)/2;
+  const x1 = x0 + W*g;
+  const y1 = y0 + H*g;
+  return [
+    [x0, y0], [xm, y0], [x1, y0],
+    [x1, ym],
+    [x1, y1], [xm, y1], [x0, y1],
+    [x0, ym],
+  ];
+}
+function drawGhostRect(y1,x1,y2,x2, valid=true){
+  const g = State.cell;
+  const y = Math.min(y1,y2), x = Math.min(x1,x2);
+  const H = Math.abs(y2-y1)+1, W = Math.abs(x2-x1)+1;
+  const px = (x-1)*g, py = (y-1)*g;
+  ctx.save();
+  ctx.fillStyle = valid ? '#93c5fd55' : '#fecaca88';
+  ctx.strokeStyle = valid ? '#60a5fa' : '#f87171';
+  ctx.lineWidth = 2;
+  ctx.fillRect(px,py, W*g, H*g);
+  ctx.strokeRect(px,py, W*g, H*g);
+  ctx.restore();
+}
+function drawContactsOverlay(){
+  const g = State.cell;
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#fb923c';
+  for(const c of State.contacts){
+    if(c.px){
+      ctx.beginPath();
+      ctx.moveTo(c.px.x1, c.px.y1);
+      ctx.lineTo(c.px.x2, c.px.y2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function draw(){
+  drawGrid();
+  for(const p of State.placements){ drawPlacement(p, true); }
+  if(State.drawDrag){
+    drawGhostRect(State.drawDrag.y1, State.drawDrag.x1, State.drawDrag.y2, State.drawDrag.x2, State.drawDrag.valid!==false);
+  }
+  computeContacts();
+  drawContactsOverlay();
+  updateCompositeObjects(); // Update composites only when needed
+  drawCompositeObjects();
+}
+
+function drawCompositeObjects() {
+  // Draw composite object borders and labels (don't update here)
+  for (const [compositeId, composite] of State.compositeObjects) {
+    const { bounds, name, group } = composite;
+    const g = State.cell;
+    
+    // Generate procedural color for this composite
+    const compositeColor = generateCompositeColor(compositeId);
+    
+    // Draw bounding box
+    const x0 = (bounds.minX - 1) * g;
+    const y0 = (bounds.minY - 1) * g;
+    const width = (bounds.maxX - bounds.minX + 1) * g;
+    const height = (bounds.maxY - bounds.minY + 1) * g;
+    
+    // Draw composite bounding box border (thinner, dashed)
+    ctx.strokeStyle = compositeColor;
+    ctx.lineWidth = 1.5; // Thinner line
+    ctx.setLineDash([6, 3]); // Dashed line
+    ctx.strokeRect(x0, y0, width, height);
+    ctx.setLineDash([]); // Reset line dash
+    
+    // Draw composite perimeter border (thicker, same color)
+    drawCompositePerimeter(group, g, compositeColor);
+    
+    // Draw composite name
+    ctx.fillStyle = compositeColor;
+    ctx.font = 'bold 14px ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(name, x0 + 4, y0 + 4);
+  }
+}
+
+function drawCompositePerimeter(group, g, color) {
+  // Create a set of all occupied cells
+  const occupiedCells = new Set();
+  for (const p of group) {
+    const r = p.rect(State.reg);
+    for (let y = r.y1; y <= r.y2; y++) {
+      for (let x = r.x1; x <= r.x2; x++) {
+        occupiedCells.add(`${y},${x}`);
+      }
+    }
+  }
+  
+  // Draw perimeter by checking each cell's edges
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 4; // Thicker line
+  ctx.setLineDash([]);
+  
+  for (const p of group) {
+    const r = p.rect(State.reg);
+    for (let y = r.y1; y <= r.y2; y++) {
+      for (let x = r.x1; x <= r.x2; x++) {
+        const cellX = (x - 1) * g;
+        const cellY = (y - 1) * g;
+        
+        // Check each edge and draw if it's on the perimeter
+        // Top edge
+        if (!occupiedCells.has(`${y-1},${x}`)) {
+          ctx.beginPath();
+          ctx.moveTo(cellX, cellY);
+          ctx.lineTo(cellX + g, cellY);
+          ctx.stroke();
+        }
+        
+        // Right edge
+        if (!occupiedCells.has(`${y},${x+1}`)) {
+          ctx.beginPath();
+          ctx.moveTo(cellX + g, cellY);
+          ctx.lineTo(cellX + g, cellY + g);
+          ctx.stroke();
+        }
+        
+        // Bottom edge
+        if (!occupiedCells.has(`${y+1},${x}`)) {
+          ctx.beginPath();
+          ctx.moveTo(cellX, cellY + g);
+          ctx.lineTo(cellX + g, cellY + g);
+          ctx.stroke();
+        }
+        
+        // Left edge
+        if (!occupiedCells.has(`${y},${x-1}`)) {
+          ctx.beginPath();
+          ctx.moveTo(cellX, cellY);
+          ctx.lineTo(cellX, cellY + g);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+}
+
+function updateCompositeObjects(force = false) {
+  console.log('updateCompositeObjects called', force ? '(forced)' : '');
+  
+  // Create a more comprehensive change detection that includes positions
+  const currentPlacementData = State.placements.map(p => `${p.uid}:${p.vshift[0]},${p.vshift[1]}:${p.vertical}`).sort().join('|');
+  if (!force && State.lastPlacementIds === currentPlacementData) {
+    console.log('No placement changes detected, skipping composite update');
+    return; // No change, don't update
+  }
+  State.lastPlacementIds = currentPlacementData;
+  
+  console.log(`Processing ${State.placements.length} placements:`, State.placements.map(p => `${p.uid}(${p.baseId})`));
+  
+  // Clear existing composite objects
+  State.compositeObjects.clear();
+  
+  // Find contiguous groups and create composite objects
+  const contiguousGroups = findContiguousGroups();
+  console.log(`Found ${contiguousGroups.length} contiguous groups:`, contiguousGroups.map(g => g.map(p => p.uid)));
+  
+  let compositeCounter = 1;
+  
+  for (const group of contiguousGroups) {
+    if (group.length > 1) {
+      const compositeId = `C${compositeCounter++}`;
+      const compositeName = generateCompositeName();
+      
+      console.log(`Creating composite ${compositeId} (${compositeName}) with ${group.length} placements:`, group.map(p => p.uid));
+      
+      // Find bounding box
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of group) {
+        const r = p.rect(State.reg);
+        minX = Math.min(minX, r.x1);
+        minY = Math.min(minY, r.y1);
+        maxX = Math.max(maxX, r.x2);
+        maxY = Math.max(maxY, r.y2);
+      }
+      
+      // Store composite info
+      State.compositeObjects.set(compositeId, {
+        id: compositeId,
+        name: compositeName,
+        group: group,
+        bounds: { minX, minY, maxX, maxY }
+      });
+      
+      console.log(`Composite ${compositeId} bounds: (${minX},${minY}) to (${maxX},${maxY})`);
+    }
+  }
+  
+  console.log(`Final composite objects: ${State.compositeObjects.size}`);
+}
+
+/* ===================== Geometry & Rules ===================== */
+function pxToCell(px){ return Math.floor(px/State.cell)+1; }
+function rectsOverlap(a,b){
+  return !(a.x2 < b.x1 || a.x1 > b.x2 || a.y2 < b.y1 || a.y1 > b.y2);
+}
+function wouldOverlap(candidate, excludeUid=null){
+  for(const p of State.placements){
+    if(p.uid===excludeUid) continue;
+    const r = p.rect(State.reg);
+    if(rectsOverlap(candidate, r)) return true;
+  }
+  return false;
+}
+
+/* Contacts with exact edge adjacency (pixel mapping corrected: no overhang) */
+function computeContacts(){
+  const res=[];
+  const g = State.cell;
+
+  for(let i=0;i<State.placements.length;i++){
+    for(let j=i+1;j<State.placements.length;j++){
+      const A = State.placements[i], B = State.placements[j];
+      const a = A.rect(State.reg), b = B.rect(State.reg);
+
+      // horizontal contact: A bottom to B top (line y = a.y2*g)
+      if(a.y2 + 1 === b.y1){
+        const x0 = Math.max(a.x1,b.x1), x1 = Math.min(a.x2,b.x2);
+        if(x0<=x1){
+          const seg = {x1:(x0-1)*g, y1:(a.y2)*g, x2:(x1)*g, y2:(a.y2)*g};
+          const runA = runForHorizontalEdge(A, a, x0, x1, "-X");
+          const runB = runForHorizontalEdge(B, b, x0, x1, "X");
+          res.push(contactRecord(A,B,runA,runB,seg));
+        }
+      }
+      // horizontal contact: A top to B bottom (line y = b.y2*g)
+      if(b.y2 + 1 === a.y1){
+        const x0 = Math.max(a.x1,b.x1), x1 = Math.min(a.x2,b.x2);
+        if(x0<=x1){
+          const seg = {x1:(x0-1)*g, y1:(b.y2)*g, x2:(x1)*g, y2:(b.y2)*g};
+          const runA = runForHorizontalEdge(A, a, x0, x1, "X");
+          const runB = runForHorizontalEdge(B, b, x0, x1, "-X");
+          res.push(contactRecord(A,B,runA,runB,seg));
+        }
+      }
+      // vertical contact: A right to B left (line x = a.x2*g)
+      if(a.x2 + 1 === b.x1){
+        const y0 = Math.max(a.y1,b.y1), y1 = Math.min(a.y2,b.y2);
+        if(y0<=y1){
+          const seg = {x1:(a.x2)*g, y1:(y0-1)*g, x2:(a.x2)*g, y2:(y1)*g};
+          const runA = runForVerticalEdge(A, a, y0, y1, "Y");
+          const runB = runForVerticalEdge(B, b, y0, y1, "-Y");
+          res.push(contactRecord(A,B,runA,runB,seg));
+        }
+      }
+      // vertical contact: A left to B right (line x = b.x2*g)
+      if(b.x2 + 1 === a.x1){
+        const y0 = Math.max(a.y1,b.y1), y1 = Math.min(a.y2,b.y2);
+        if(y0<=y1){
+          const seg = {x1:(b.x2)*g, y1:(y0-1)*g, x2:(b.x2)*g, y2:(y1)*g};
+          const runA = runForVerticalEdge(A, a, y0, y1, "-Y");
+          const runB = runForVerticalEdge(B, b, y0, y1, "Y");
+          res.push(contactRecord(A,B,runA,runB,seg));
+        }
+      }
+    }
+  }
+  State.contacts = res;
+  updateContactPanel();
+}
+
+/* Map world segment along x to local (y fixed) for top/bottom edges */
+function runForHorizontalEdge(P, r, x0, x1, edge){
+  const H = r.H, W = r.W;
+  const dy = r.y1, dx = r.x1;
+  const y_local = (edge === "X") ? H : 1; // top=X→y=H; bottom=-X→y=1
+  const x_local_1 = x0 - dx + 1;
+  const x_local_2 = x1 - dx + 1;
+  const xl = Math.min(x_local_1, x_local_2);
+  const xr = Math.max(x_local_1, x_local_2);
+  return { id:P.baseId, hat:P.vertical, edge, y1:y_local, x1:xl, y2:y_local, x2:xr };
+}
+/* Map world segment along y to local (x fixed) for left/right edges */
+function runForVerticalEdge(P, r, y0, y1, edge){
+  const H = r.H, W = r.W;
+  const dy = r.y1, dx = r.x1;
+  const y_local_1 = dy + H - y0;
+  const y_local_2 = dy + H - y1;
+  const yl = Math.min(y_local_1, y_local_2);
+  const yr = Math.max(y_local_1, y_local_2);
+  const x_local = (edge === "Y") ? W : 1; // right=Y→x=W; left=-Y→x=1
+  return { id:P.baseId, hat:P.vertical, edge, y1:yl, x1:x_local, y2:yr, x2:x_local };
+}
+function contactRecord(A,B,runA,runB,segPx){
+  return { Auid:A.uid, Bid:B.uid, A:runA, B:runB, px:{...segPx} };
+}
+
+/* ===================== Hit Testing & Interaction ===================== */
+function pointInPlacement(px,py,p){
+  const r = p.rect(State.reg);
+  const g = State.cell;
+  const x0 = (r.x1-1)*g, y0 = (r.y1-1)*g;
+  return px>=x0 && px<=x0+r.W*g && py>=y0 && py<=y0+r.H*g;
+}
+// Global state for cycling through overlapping instances
+let lastClickTime = 0;
+let lastClickPosition = null;
+let clickCycleIndex = 0;
+let lastCandidates = [];
+
+function hitTest(px,py){
+  // Find all placements that contain the point
+  const candidates = [];
+  for(let i=State.placements.length-1;i>=0;i--){
+    const p = State.placements[i];
+    if(pointInPlacement(px,py,p)) {
+      candidates.push(p);
+    }
+  }
+  
+  console.log(`Hit test at (${px}, ${py}): found ${candidates.length} candidates`);
+  candidates.forEach((p, i) => {
+    console.log(`  Candidate ${i}: ${p.uid} (${p.baseId}) at [${p.vshift[0]}, ${p.vshift[1]}]`);
+  });
+  
+  if (candidates.length === 0) {
+    clickCycleIndex = 0;
+    lastCandidates = [];
+    return null;
+  }
+  
+  // If only one candidate, return it
+  if (candidates.length === 1) {
+    clickCycleIndex = 0;
+    lastCandidates = candidates;
+    console.log(`Single candidate: ${candidates[0].uid}`);
+    return candidates[0].uid;
+  }
+  
+  // Multiple candidates - check if this is a repeat click in the same area
+  const currentTime = Date.now();
+  const isRepeatClick = (currentTime - lastClickTime < 500) && 
+                       lastClickPosition && 
+                       Math.abs(px - lastClickPosition.x) < 10 && 
+                       Math.abs(py - lastClickPosition.y) < 10 &&
+                       lastCandidates.length === candidates.length &&
+                       lastCandidates.every((p, i) => p.uid === candidates[i].uid);
+  
+  if (isRepeatClick) {
+    // This is a repeat click - cycle to next instance
+    clickCycleIndex = (clickCycleIndex + 1) % candidates.length;
+    console.log(`Repeat click - cycling to index ${clickCycleIndex}/${candidates.length}`);
+  } else {
+    // New click - start from topmost (index 0)
+    clickCycleIndex = 0;
+    console.log(`New click - starting from topmost (index 0)`);
+  }
+  
+  // Update click tracking
+  lastClickTime = currentTime;
+  lastClickPosition = { x: px, y: py };
+  lastCandidates = [...candidates];
+  
+  const selectedUid = candidates[clickCycleIndex].uid;
+  const selectedPlacement = candidates[clickCycleIndex];
+  console.log(`Selected instance ${clickCycleIndex + 1}/${candidates.length}: ${selectedUid}`);
+  console.log(`Selected placement details:`, {
+    uid: selectedPlacement.uid,
+    baseId: selectedPlacement.baseId,
+    vshift: selectedPlacement.vshift,
+    vertical: selectedPlacement.vertical
+  });
+  
+  return selectedUid;
+}
+function hitHandle(px,py,p){
+  const r = p.rect(State.reg);
+  const g = State.cell;
+  const x0 = (r.x1-1)*g, y0=(r.y1-1)*g;
+  const pts = handlePoints(x0,y0,r.W,r.H,g);
+  const rad = Math.max(4, Math.min(8, Math.floor(g*0.18))) + 2;
+
+  // Check rotation handle first - it has priority (only for non-squares)
+  const [H,W] = p.usedDims(State.reg);
+  if(H !== W) {
+    const rx = x0 + (r.W*g)/2;
+    const ry = y0 - Math.min(18, Math.max(12, g*0.35));
+    const radius = Math.max(8, Math.min(12, Math.floor(g*0.25)));
+    const d2r = (px-rx)*(px-rx)+(py-ry)*(py-ry);
+    if(d2r <= (radius + 4)*(radius + 4)) return 'rotate';
+  }
+
+  // Check resize handles
+  for(let i=0;i<pts.length;i++){
+    const [hx,hy]=pts[i];
+    const d2 = (px-hx)*(px-hx)+(py-hy)*(py-hy);
+    if(d2 <= rad*rad) return i;
+  }
+  return -1;
+}
+
+
+let draggingMove = null; // {uid, startPx, startPy, origShift:[dy,dx]}
+
+canvas.addEventListener('mousemove', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+
+  // draw tool ghost
+  if(State.tool==="draw" && State.drawDrag){
+    State.drawDrag.y2 = pxToCell(py);
+    State.drawDrag.x2 = pxToCell(px);
+    const cand = ghostToRect(State.drawDrag);
+    State.drawDrag.valid = !wouldOverlap(cand, null);
+    draw();
+    return;
+  }
+
+  // resizing
+  if(State.resizeDrag && typeof State.resizeDrag.handle === 'number'){
+    const p = State.placements.find(q=>q.uid===State.resizeDrag.uid);
+    if(!p) return;
+    const s = State.resizeDrag.start;
+    const cy = pxToCell(py);
+    const cx = pxToCell(px);
+    let y1=s.y1, x1=s.x1, y2=s.y2, x2=s.x2;
+
+    switch(State.resizeDrag.handle){
+      case 0: y1=cy; x1=cx; break; // TL
+      case 1: y1=cy; break;        // T
+      case 2: y1=cy; x2=cx; break; // TR
+      case 3: x2=cx; break;        // R
+      case 4: y2=cy; x2=cx; break; // BR
+      case 5: y2=cy; break;        // B
+      case 6: y2=cy; x1=cx; break; // BL
+      case 7: x1=cx; break;        // L
+    }
+    const ny1=Math.min(y1,y2), nx1=Math.min(x1,x2);
+    const ny2=Math.max(y1,y2), nx2=Math.max(x1,x2);
+    const H=Math.max(1, ny2-ny1+1), W=Math.max(1, nx2-nx1+1);
+    const cand = { y1:ny1, x1:nx1, y2:ny2, x2:nx2, H, W, dy:ny1, dx:nx1 };
+
+    if(!wouldOverlap(cand, p.uid)){
+      p.tempDims=[H,W];
+      p.vshift=[ny1,nx1];
+      updateRightPanel();
+      // Update composite objects after resizing
+      updateCompositeObjects();
+      draw();
+    } else {
+      draw();
+    }
+    return;
+  }
+
+  // moving
+  if(draggingMove){
+    const p = State.placements.find(q=>q.uid===draggingMove.uid);
+    if(!p) {
+      console.log('Dragging: placement not found for uid:', draggingMove.uid);
+      return;
+    }
+    console.log(`Dragging placement: ${p.uid} (${p.baseId}) at position [${p.vshift[0]}, ${p.vshift[1]}]`);
+    const dxPx = px - draggingMove.startPx;
+    const dyPx = py - draggingMove.startPy;
+    const ddx = Math.round(dxPx / State.cell);
+    const ddy = Math.round(dyPx / State.cell);
+    const r0 = p.rect(State.reg);
+    const cand = { y1:draggingMove.origShift[0] + ddy, x1:draggingMove.origShift[1] + ddx,
+                   y2:0, x2:0, H:r0.H, W:r0.W, dy:0, dx:0 };
+    cand.y2 = cand.y1 + r0.H - 1;
+    cand.x2 = cand.x1 + r0.W - 1;
+    cand.dy = cand.y1; cand.dx=cand.x1;
+
+    console.log(`Moving to new position: [${cand.y1}, ${cand.x1}]`);
+
+    if(!wouldOverlap(cand, p.uid)){
+      p.vshift=[cand.y1,cand.x1];
+      updateRightPanel();
+      // Update composite objects after moving
+      updateCompositeObjects();
+      draw();
+    } else {
+      console.log('Move blocked by overlap');
+      draw();
+    }
+    return;
+  }
+
+  // hover
+  const uid = hitTest(px,py);
+  State.hovered = uid;
+  
+  // Check if hovering over rotation knob (only for non-squares)
+  let hoveringRotate = false;
+  for(const p of State.placements){
+    const [H,W] = p.usedDims(State.reg);
+    if(H !== W) {
+      const h = hitHandle(px,py,p);
+      if(h === 'rotate'){
+        hoveringRotate = true;
+        State.hovered = p.uid; // Set hovered to the placement with rotation knob
+        break;
+      }
+    }
+  }
+  
+  // Store hover state for drawing
+  State.hoveringRotate = hoveringRotate;
+  
+  // Update cursor style
+  if(hoveringRotate){
+    canvas.style.cursor = 'pointer';
+  } else {
+    canvas.style.cursor = 'default';
+  }
+  
+  byId('hoverLabel').textContent = uid ? uid : '—';
+  draw();
+});
+
+canvas.addEventListener('mousedown', (e)=>{
+  if(e.button!==0) return;
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+
+  if(byId('toolDraw').checked){
+    State.tool="draw";
+    const y = pxToCell(py), x = pxToCell(px);
+    State.drawDrag = {y1:y, x1:x, y2:y, x2:x, valid:true};
+    return;
+  } else {
+    State.tool="select";
+  }
+
+  // First check if we're clicking on a rotation handle (only for non-squares)
+  let rotationHandled = false;
+  for(const p of State.placements){
+    const [H,W] = p.usedDims(State.reg);
+    if(H !== W) {
+      const h = hitHandle(px,py,p);
+      if(h === 'rotate'){
+        State.selected = p.uid;
+        attemptRotate(p);
+        pushHistory();
+        updateRightPanel();
+        // Update composite objects after rotation
+        updateCompositeObjects();
+        draw();
+        rotationHandled = true;
+        break;
+      }
+    }
+  }
+  
+  if(rotationHandled) return;
+
+  // If not rotation handle, check for other interactions
+  const uid = hitTest(px,py);
+  console.log(`Hit test result: ${uid}`);
+  if(uid){
+    State.selected = uid;
+    const p = State.placements.find(q=>q.uid===uid);
+    console.log(`Selected placement: ${p ? p.uid : 'null'} (${p ? p.baseId : 'N/A'})`);
+    if(p){
+      const h = hitHandle(px,py,p);
+      if(h>=0){
+        // Resize handle
+        const r = p.rect(State.reg);
+        State.resizeDrag = {
+          uid, handle:h,
+          start: { y1:r.y1, x1:r.x1, y2:r.y2, x2:r.x2 }
+        };
+        console.log(`Resize handle ${h} selected`);
+      } else {
+        // Move handle
+        draggingMove = { uid, startPx:px, startPy:py, origShift:[...p.vshift] };
+        console.log(`Move handle selected for ${p.uid} (${p.baseId}) at [${p.vshift[0]}, ${p.vshift[1]}]`);
+      }
+    }
+    updateRightPanel();
+    draw();
+  }else{
+    console.log('No selection');
+    State.selected = null;
+    updateRightPanel();
+    draw();
+  }
+});
+
+window.addEventListener('mouseup', ()=>{
+  // commit draw
+  if(State.drawDrag){
+    const y1 = Math.min(State.drawDrag.y1, State.drawDrag.y2);
+    const x1 = Math.min(State.drawDrag.x1, State.drawDrag.x2);
+    const y2 = Math.max(State.drawDrag.y1, State.drawDrag.y2);
+    const x2 = Math.max(State.drawDrag.x1, State.drawDrag.x2);
+    const H = Math.max(1, y2-y1+1);
+    const W = Math.max(1, x2-x1+1);
+    const cand = { y1, x1, y2, x2, H, W, dy:y1, dx:x1 };
+    if(!wouldOverlap(cand,null)){
+      const usedH = H, usedW = W;
+      const canonH = Math.min(usedH,usedW), canonW = Math.max(usedH,usedW);
+      const newId = ID_CONSOLIDATION.getCanonicalAtomicId(canonH, canonW);
+      State.reg.add(new Atomic(newId, canonH, canonW));
+      const vertical = usedH > usedW;
+      const p = new Placement({baseId:newId, vshift:[y1,x1], vertical});
+      State.placements.push(p);
+      State.selected = p.uid;
+      refreshPalette();
+      updateRightPanel();
+      pushHistory();
+    }
+    State.drawDrag = null;
+    // Force update composite objects after drawing new rectangle
+    updateCompositeObjects(true);
+    draw();
+  }
+
+  // commit resize
+  if(State.resizeDrag){
+    const p = State.placements.find(q=>q.uid===State.resizeDrag.uid);
+    if(p && p.tempDims){
+      const [H,W] = p.tempDims;
+      const [dy,dx] = p.vshift;
+      commitReshape(p, H, W, dy, dx);
+      p.tempDims=null;
+      pushHistory();
+    }
+    State.resizeDrag=null;
+    // Force update composite objects after resize commit
+    updateCompositeObjects(true);
+    draw();
+  }
+
+  if(draggingMove){ 
+    pushHistory(); 
+    // Force update composite objects after move commit
+    updateCompositeObjects(true);
+  }
+  draggingMove = null;
+});
+
+window.addEventListener('keydown',(e)=>{
+  if(e.key==='Delete' || e.key==='Backspace'){
+    if(document.activeElement && ['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+    deleteSelected(); pushHistory();
+  }
+  if((e.key==='r'||e.key==='R') && State.selected){
+    toggleHat(); pushHistory();
+  }
+  if(e.key==='Tab' && State.selected){
+    e.preventDefault();
+    cycleThroughInstances();
+  }
+  if(e.key===' ' && State.selected){
+    e.preventDefault();
+    cycleThroughInstances();
+  }
+  if(e.ctrlKey && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  if(e.ctrlKey && e.key.toLowerCase()==='y'){ e.preventDefault(); redo(); }
+});
+
+/* ===================== Copy Functions ===================== */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    console.log('Copied to clipboard:', text);
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err);
+    // Fallback for older browsers
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+  }
+}
+
+function copyContacts() {
+  if (State.contacts.length === 0) {
+    copyToClipboard('No contacts found.');
+    return;
+  }
+  
+  let text = `Contacts (${State.contacts.length}):\n`;
+  let k = 1;
+  for (const c of State.contacts) {
+    const left = `< ${c.A.hat?'^ ':''}${c.A.id} | ( ${c.A.y1},${c.A.x1} ; ${c.A.y2},${c.A.x2} )${c.A.edge} >`;
+    const right = `< ${c.B.hat?'^ ':''}${c.B.id} | ( ${c.B.y1},${c.B.x1} ; ${c.B.y2},${c.B.x2} )${c.B.edge} >`;
+    const join = `< C${k} | ${left} ${right} >`;
+    text += `Contact ${k}: ${left} ↔ ${right}\n`;
+    text += `  ${join}\n\n`;
+    k++;
+  }
+  copyToClipboard(text);
+}
+
+function copySelection() {
+  const sel = State.placements.find(p => p.uid === State.selected);
+  if (!sel) {
+    copyToClipboard('No selection.');
+    return;
+  }
+  
+  const r = sel.rect(State.reg);
+  const a = State.reg.get(sel.baseId);
+  const dims = (sel.vertical && a.H !== a.W) ? `${a.W},${a.H}` : `${a.H},${a.W}`;
+  
+  let text = `Selected Object: ${sel.uid}\n`;
+  text += `Label: ${sel.vertical?'^ ':''}${sel.baseId} [${sel.uid}]\n`;
+  text += `Dimensions: ${r.H}×${r.W}\n`;
+  text += `Position: (${r.y1},${r.x1})\n`;
+  text += `Canonical: < ${a.id} | 1,1 ; ${a.H},${a.W} >\n`;
+  text += `Notation: < ${sel.vertical?'^ ':''}${a.id} | 1,1 ; ${dims} >`;
+  
+  copyToClipboard(text);
+}
+
+function copyScene() {
+  let text = `Scene Summary:\n`;
+  text += `Placements: ${State.placements.length}\n`;
+  text += `Occupied cells: ${totalCells()}\n`;
+  text += `Contacts: ${State.contacts.length}\n\n`;
+  
+  if (State.placements.length > 0) {
+    text += `Objects:\n`;
+    for (const p of State.placements) {
+      const r = p.rect(State.reg);
+      const a = State.reg.get(p.baseId);
+      const dims = (p.vertical && a.H !== a.W) ? `${a.W},${a.H}` : `${a.H},${a.W}`;
+      text += `  < ${p.vertical?'^ ':''}${a.id} | ${r.y1},${r.x1} ; ${r.y1+r.H-1},${r.x1+r.W-1} >\n`;
+    }
+  }
+  
+  copyToClipboard(text);
+}
+
+function copyAllObjects() {
+  if (State.placements.length === 0) {
+    copyToClipboard('No objects in scene.');
+    return;
+  }
+  
+  let text = `All Objects (${State.placements.length}):\n\n`;
+  for (const p of State.placements) {
+    const r = p.rect(State.reg);
+    const a = State.reg.get(p.baseId);
+    const dims = (p.vertical && a.H !== a.W) ? `${a.W},${a.H}` : `${a.H},${a.W}`;
+    text += `< ${p.vertical?'^ ':''}${a.id} | ${r.y1},${r.x1} ; ${r.y1+r.H-1},${r.x1+r.W-1} >\n`;
+  }
+  
+  copyToClipboard(text);
+}
+
+function copyConsolidation() {
+  const statsDiv = byId('consolidationStats');
+  const statsText = statsDiv.textContent || 'No consolidation stats available.';
+  copyToClipboard(statsText);
+}
+
+function escapeXml(unsafe) {
+  return unsafe.replace(/[<>&'"]/g, function (c) {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+    }
+  });
+}
+
+function generateSVG() {
+  const canvas = byId('canvas');
+  const rect = canvas.getBoundingClientRect();
+  const cellSize = State.cell;
+  
+  // Calculate bounds
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of State.placements) {
+    const r = p.rect(State.reg);
+    minX = Math.min(minX, r.x1);
+    minY = Math.min(minY, r.y1);
+    maxX = Math.max(maxX, r.x2);
+    maxY = Math.max(maxY, r.y2);
+  }
+  
+  if (minX === Infinity) {
+    minX = minY = 1;
+    maxX = maxY = 10;
+  }
+  
+  const padding = 2;
+  const notationHeight = 20; // Extra space for notation text
+  const svgWidth = (maxX - minX + 1 + 2 * padding) * cellSize;
+  const svgHeight = (maxY - minY + 1 + 2 * padding) * cellSize + notationHeight;
+  
+  let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+  svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>`;
+  
+  // Draw grid
+  svg += `<defs><pattern id="grid" width="${cellSize}" height="${cellSize}" patternUnits="userSpaceOnUse">`;
+  svg += `<path d="M ${cellSize} 0 L 0 0 0 ${cellSize}" fill="none" stroke="#f1f5f9" stroke-width="1"/>`;
+  svg += `</pattern></defs>`;
+  svg += `<rect width="${svgWidth}" height="${svgHeight}" fill="url(#grid)"/>`;
+  
+  // Draw placements
+  for (const p of State.placements) {
+    const r = p.rect(State.reg);
+    const x = (r.x1 - minX + padding) * cellSize;
+    const y = (r.y1 - minY + padding) * cellSize;
+    const width = r.W * cellSize;
+    const height = r.H * cellSize;
+    
+    // Convert HSL color to RGB for SVG
+    const hslMatch = p.color.match(/hsl\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/);
+    let fillColor = '#93c5fd';
+    if (hslMatch) {
+      const h = +hslMatch[1];
+      const s = +hslMatch[2];
+      const l = +hslMatch[3];
+      fillColor = `hsl(${h}, ${s}%, ${l}%)`;
+    }
+    
+    svg += `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${fillColor}" stroke="#8ca2c0" stroke-width="1.5"/>`;
+    
+    // Add label
+    const labelX = x + 4;
+    const labelY = y + 14;
+    const labelText = escapeXml((p.vertical ? '^ ' : '') + p.baseId);
+    svg += `<text x="${labelX}" y="${labelY}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace" font-size="12" fill="#0b1526">${labelText}</text>`;
+    
+    // Add notation below the shape
+    const notationY = y + height + 16;
+    const notation = escapeXml(`< ${p.vertical ? '^ ' : ''}${p.baseId} | ${r.y1},${r.x1} ; ${r.y2},${r.x2} >`);
+    svg += `<text x="${x}" y="${notationY}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace" font-size="10" fill="#64748b">${notation}</text>`;
+  }
+  
+  // Draw contacts
+  for (const c of State.contacts) {
+    if (c.px) {
+      const x = (c.px.x - minX + padding) * cellSize;
+      const y = (c.px.y - minY + padding) * cellSize;
+      const width = c.px.w * cellSize;
+      const height = c.px.h * cellSize;
+      svg += `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="none" stroke="#fb923c" stroke-width="3"/>`;
+    }
+  }
+  
+  svg += `</svg>`;
+  return svg;
+}
+
+function exportSVG() {
+  const svg = generateSVG();
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `polyomino_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.svg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function generateCompositeName() {
+  const name = `S${State.compositeNameCounter++}`;
+  return name;
+}
+
+function findContiguousGroups() {
+  const groups = [];
+  const processed = new Set();
+  
+  for (const p of State.placements) {
+    if (processed.has(p.uid)) continue;
+    
+    const group = [p];
+    const queue = [p];
+    processed.add(p.uid);
+    
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const currentRect = current.rect(State.reg);
+      
+      // Find all placements that touch this one
+      for (const other of State.placements) {
+        if (processed.has(other.uid)) continue;
+        
+        const otherRect = other.rect(State.reg);
+        console.log(`Checking if ${current.uid} touches ${other.uid}:`);
+        console.log(`  Current: [${currentRect.y1},${currentRect.x1}] to [${currentRect.y2},${currentRect.x2}]`);
+        console.log(`  Other: [${otherRect.y1},${otherRect.x1}] to [${otherRect.y2},${otherRect.x2}]`);
+        
+        if (rectsTouch(currentRect, otherRect)) {
+          console.log(`  -> They touch! Adding ${other.uid} to group`);
+          group.push(other);
+          queue.push(other);
+          processed.add(other.uid);
+        } else {
+          console.log(`  -> They don't touch`);
+        }
+      }
+    }
+    
+    groups.push(group);
+  }
+  
+  return groups;
+}
+
+function rectsTouch(a, b) {
+  // Check if rectangles touch (share an edge)
+  const touches = (a.x2 + 1 === b.x1 || b.x2 + 1 === a.x1) && !(a.y2 < b.y1 || b.y2 < a.y1) ||
+                  (a.y2 + 1 === b.y1 || b.y2 + 1 === a.y1) && !(a.x2 < b.x1 || b.x2 < a.x1);
+  
+  if (touches) {
+    console.log(`Rectangles touch: A(${a.x1},${a.y1},${a.x2},${a.y2}) B(${b.x1},${b.y1},${b.x2},${b.y2})`);
+  }
+  
+  return touches;
+}
+
+function generateCompositeFromGroup(group, compositeId, compositeName) {
+  if (group.length === 1) return null;
+  
+  // Find the bounding box of the group
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of group) {
+    const r = p.rect(State.reg);
+    minX = Math.min(minX, r.x1);
+    minY = Math.min(minY, r.y1);
+    maxX = Math.max(maxX, r.x2);
+    maxY = Math.max(maxY, r.y2);
+  }
+  
+  // Generate joining operation form
+  let joiningForm = `< ${compositeId} | `;
+  const joinParts = [];
+  
+  // For each pair of touching objects, create a join
+  for (let i = 0; i < group.length - 1; i++) {
+    for (let j = i + 1; j < group.length; j++) {
+      const p1 = group[i];
+      const p2 = group[j];
+      const r1 = p1.rect(State.reg);
+      const r2 = p2.rect(State.reg);
+      
+      if (rectsTouch(r1, r2)) {
+        // Find the contact edge
+        const contact = State.contacts.find(c => 
+          (c.Auid === p1.uid && c.Buid === p2.uid) || 
+          (c.Auid === p2.uid && c.Buid === p1.uid)
+        );
+        
+        if (contact) {
+          const leftObj = contact.Auid === p1.uid ? p1 : p2;
+          const rightObj = contact.Auid === p1.uid ? p2 : p1;
+          const leftHat = leftObj.vertical ? '^ ' : '';
+          const rightHat = rightObj.vertical ? '^ ' : '';
+          
+          joinParts.push(`< ${leftHat}${leftObj.baseId} | ( ${contact.A.y1},${contact.A.x1} ; ${contact.A.y2},${contact.A.x2} )${contact.A.edge} > < ${rightHat}${rightObj.baseId} | ( ${contact.B.y1},${contact.B.x1} ; ${contact.B.y2},${contact.B.x2} )${contact.B.edge} >`);
+        }
+      }
+    }
+  }
+  
+  if (joinParts.length > 0) {
+    joiningForm += joinParts.join(' ');
+  } else {
+    // Fallback: just list the objects
+    const objParts = group.map(p => {
+      const hat = p.vertical ? '^ ' : '';
+      return `< ${hat}${p.baseId} | 1,1 ; ${p.rect(State.reg).H},${p.rect(State.reg).W} >`;
+    });
+    joiningForm += objParts.join(' ');
+  }
+  
+  joiningForm += ' >';
+  
+  // Generate composite coordinate form following D4 symmetry canonical rules
+  const coordinateForm = generateCanonicalCompositeForm(group, compositeId, { minX, minY, maxX, maxY });
+  
+  return {
+    id: compositeId,
+    joiningForm,
+    coordinateForm,
+    group,
+    bounds: { minX, minY, maxX, maxY }
+  };
+}
+
+function generateCanonicalCompositeForm(group, compositeId, bounds) {
+  const { minX, minY, maxX, maxY } = bounds;
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  
+  // D4 symmetry canonical rules:
+  // 1. Bounding atomic shape select horizontal orientation (W >= H)
+  // 2. Y edge with more contact length faces right (y axis)
+  // 3. X edge with more contact length faces bottom (x axis)
+  
+  let canonicalWidth = width;
+  let canonicalHeight = height;
+  let needsRotation = false;
+  let needsReflectionX = false;
+  let needsReflectionY = false;
+  
+  // Rule 1: Ensure horizontal orientation (W >= H)
+  if (height > width) {
+    canonicalWidth = height;
+    canonicalHeight = width;
+    needsRotation = true;
+  }
+  
+  // Calculate contact lengths for reflection decisions
+  const contactLengths = calculateContactLengths(group);
+  
+  // Rule 2: Y edge with more contact length faces right
+  if (contactLengths.vertical < contactLengths.horizontal) {
+    needsReflectionY = true;
+  }
+  
+  // Rule 3: X edge with more contact length faces bottom
+  if (contactLengths.horizontal < contactLengths.vertical) {
+    needsReflectionX = true;
+  }
+  
+  // Generate constituent coordinates in canonical form
+  const constituentCoords = [];
+  
+  for (const p of group) {
+    const r = p.rect(State.reg);
+    let y1 = r.y1 - minY + 1; // Convert to 1-based coordinates within bounding box
+    let x1 = r.x1 - minX + 1;
+    let y2 = r.y2 - minY + 1;
+    let x2 = r.x2 - minX + 1;
+    
+    // Apply canonical transformations
+    if (needsRotation) {
+      // Rotate 90 degrees clockwise
+      const newY1 = x1;
+      const newX1 = canonicalHeight - y2 + 1;
+      const newY2 = x2;
+      const newX2 = canonicalHeight - y1 + 1;
+      y1 = newY1;
+      x1 = newX1;
+      y2 = newY2;
+      x2 = newX2;
+    }
+    
+    if (needsReflectionX) {
+      // Reflect across horizontal axis
+      y1 = canonicalHeight - y1 + 1;
+      y2 = canonicalHeight - y2 + 1;
+      // Swap y1 and y2 to maintain bottom-left, top-right order
+      [y1, y2] = [Math.min(y1, y2), Math.max(y1, y2)];
+    }
+    
+    if (needsReflectionY) {
+      // Reflect across vertical axis
+      x1 = canonicalWidth - x1 + 1;
+      x2 = canonicalWidth - x2 + 1;
+      // Swap x1 and x2 to maintain bottom-left, top-right order
+      [x1, x2] = [Math.min(x1, x2), Math.max(x1, x2)];
+    }
+    
+    constituentCoords.push(`{ ${y1},${x1} ; ${y2},${x2} }`);
+  }
+  
+  // Sort constituent coordinates by position (top-left to bottom-right)
+  constituentCoords.sort((a, b) => {
+    const aMatch = a.match(/\{ (\d+),(\d+) ; (\d+),(\d+) \}/);
+    const bMatch = b.match(/\{ (\d+),(\d+) ; (\d+),(\d+) \}/);
+    if (!aMatch || !bMatch) return 0;
+    
+    const aY1 = parseInt(aMatch[1]);
+    const aX1 = parseInt(aMatch[2]);
+    const bY1 = parseInt(bMatch[1]);
+    const bX1 = parseInt(bMatch[2]);
+    
+    if (aY1 !== bY1) return aY1 - bY1;
+    return aX1 - bX1;
+  });
+  
+  return `< ${compositeId} | ${constituentCoords.join(' ')} >`;
+}
+
+function calculateContactLengths(group) {
+  let verticalLength = 0;
+  let horizontalLength = 0;
+  
+  for (const contact of State.contacts) {
+    const p1 = group.find(p => p.uid === contact.Auid);
+    const p2 = group.find(p => p.uid === contact.Buid);
+    
+    if (p1 && p2) {
+      if (contact.A.edge === 'X' || contact.A.edge === '-X') {
+        horizontalLength += Math.abs(contact.A.y2 - contact.A.y1) + 1;
+      } else if (contact.A.edge === 'Y' || contact.A.edge === '-Y') {
+        verticalLength += Math.abs(contact.A.x2 - contact.A.x1) + 1;
+      }
+    }
+  }
+  
+  return { vertical: verticalLength, horizontal: horizontalLength };
+}
+
+function generateNotation() {
+  let output = '';
+  
+  // 1. Library of atomic objects used
+  const usedAtomicIds = new Set();
+  for (const p of State.placements) {
+    usedAtomicIds.add(p.baseId);
+  }
+  
+  output += '# Library of Atomic Objects Used\n';
+  for (const id of usedAtomicIds) {
+    const atom = State.reg.get(id);
+    if (atom) {
+      output += `< ${id} | 1,1 ; ${atom.H},${atom.W} >\n`;
+    }
+  }
+  
+  output += '\n---\n\n';
+  
+  // 2. Library of composite objects used
+  output += '# Library of Composite Objects Used\n';
+  output += '# (This section is for composite objects formed by attachments)\n\n';
+  
+  const contiguousGroups = findContiguousGroups();
+  const compositeObjects = [];
+  let compositeCounter = 1;
+  
+  for (const group of contiguousGroups) {
+    if (group.length > 1) {
+      const compositeId = `C${compositeCounter++}`;
+      const compositeName = generateCompositeName();
+      const composite = generateCompositeFromGroup(group, compositeId, compositeName);
+      if (composite) {
+        compositeObjects.push(composite);
+        
+        // Store composite info for visualization
+        State.compositeObjects.set(compositeId, {
+          id: compositeId,
+          name: compositeName,
+          group: group,
+          bounds: composite.bounds
+        });
+        
+        output += `# Composite Object ${compositeId} (${group.length} components)\n`;
+        output += `# Joining Operation Form:\n`;
+        output += `${composite.joiningForm}\n`;
+        output += `# Composite Coordinate Form:\n`;
+        output += `${composite.coordinateForm}\n\n`;
+      }
+    }
+  }
+  
+  if (compositeObjects.length === 0) {
+    output += '# No composite objects formed by attachments\n';
+  }
+  
+  output += '---\n\n';
+  
+  // 3. Instances on the canvas
+  output += '# Instances on Canvas\n';
+  
+  // Create a map of placement UIDs to composite object IDs
+  const placementToComposite = new Map();
+  for (const comp of compositeObjects) {
+    for (const p of comp.group) {
+      placementToComposite.set(p.uid, comp.id);
+    }
+  }
+  
+  // Track which placements have been processed as part of composites
+  const processedPlacements = new Set();
+  let instanceCounter = 1;
+  
+  // First, create instances for composite objects
+  for (const comp of compositeObjects) {
+    // Find the bottom-left corner of the composite group
+    let minY = Infinity, minX = Infinity;
+    for (const p of comp.group) {
+      const r = p.rect(State.reg);
+      minY = Math.min(minY, r.y1);
+      minX = Math.min(minX, r.x1);
+    }
+    
+    // Determine operations for the composite (based on the group's overall orientation)
+    // For now, use no operations - this could be enhanced to detect group-level transformations
+    const operations = '{ Ref - | Rot - }';
+    
+    // Create a single instance for the entire composite
+    const instanceId = `I${instanceCounter++}`;
+    output += `< ${instanceId} @ ${comp.id} | ${operations} { ${minY},${minX} } >\n`;
+    
+    // Mark all placements in this composite as processed
+    for (const p of comp.group) {
+      processedPlacements.add(p.uid);
+    }
+  }
+  
+  // Then, create instances for individual atomic objects (not part of composites)
+  for (const p of State.placements) {
+    if (processedPlacements.has(p.uid)) continue; // Skip if already processed as part of composite
+    
+    const r = p.rect(State.reg);
+    const a = State.reg.get(p.baseId);
+    
+    // Determine operations
+    let operations = '{ Ref - | Rot - }';
+    if (p.vertical && a.H !== a.W) {
+      operations = '{ Ref - | Rot 1 }'; // 90° rotation for vertical orientation
+    }
+    
+    // Create instance for individual atomic object
+    const instanceId = `I${instanceCounter++}`;
+    output += `< ${instanceId} @ ${p.baseId} | ${operations} { ${r.y1},${r.x1} } >\n`;
+  }
+  
+  return output;
+}
+
+function exportNotation() {
+  const notation = generateNotation();
+  const blob = new Blob([notation], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `polyomino_notation_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importNotation() {
+  const fileInput = byId('importFile');
+  fileInput.click();
+}
+
+function parseNotationFile(content) {
+  console.log('Parsing notation file...');
+  const lines = content.split('\n');
+  console.log('Total lines:', lines.length);
+  let currentSection = '';
+  const atomicObjects = new Map();
+  const compositeObjects = new Map();
+  const instances = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    console.log(`Line ${i + 1}: "${trimmed}" (section: ${currentSection})`);
+    
+    // Detect sections first (before filtering comments)
+    if (trimmed.includes('Library of Atomic Objects Used')) {
+      currentSection = 'atomic';
+      console.log('Switched to atomic section');
+      continue;
+    } else if (trimmed.includes('Library of Composite Objects Used')) {
+      currentSection = 'composite';
+      console.log('Switched to composite section');
+      continue;
+    } else if (trimmed.includes('Instances on Canvas')) {
+      currentSection = 'instances';
+      console.log('Switched to instances section');
+      continue;
+    }
+    
+    // Skip empty lines and comments (after section detection)
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    
+    // Parse atomic objects
+    if (currentSection === 'atomic') {
+      console.log('Parsing atomic object:', trimmed);
+      const match = trimmed.match(/< (\w+) \| 1,1 ; (\d+),(\d+) >/);
+      if (match) {
+        const [, id, h, w] = match;
+        atomicObjects.set(id, { id, h: parseInt(h), w: parseInt(w) });
+        console.log('Added atomic object:', id, h, w);
+      } else {
+        console.log('Failed to parse atomic object:', trimmed);
+        // Try alternative pattern without 1,1 requirement
+        const altMatch = trimmed.match(/< (\w+) \| (\d+),(\d+) ; (\d+),(\d+) >/);
+        if (altMatch) {
+          const [, id, x1, y1, x2, y2] = altMatch;
+          const h = parseInt(x2) - parseInt(x1) + 1;
+          const w = parseInt(y2) - parseInt(y1) + 1;
+          atomicObjects.set(id, { id, h, w });
+          console.log('Added atomic object (alt pattern):', id, h, w);
+        }
+      }
+    }
+    
+    // Parse composite objects (both joining and coordinate forms)
+    if (currentSection === 'composite') {
+      console.log('Parsing composite object:', trimmed);
+      if (trimmed.includes('Joining Operation Form:')) {
+        // Skip the label, next line will be the actual form
+        continue;
+      } else if (trimmed.includes('Composite Coordinate Form:')) {
+        // Skip the label, next line will be the actual form
+        continue;
+      } else if (trimmed.startsWith('< C') && trimmed.includes('{')) {
+        // This is a composite coordinate form
+        const match = trimmed.match(/< (C\d+) \| (.+) >/);
+        if (match) {
+          const [, id, coords] = match;
+          const coordBlocks = coords.match(/\{ \d+,\d+ ; \d+,\d+ \}/g) || [];
+          compositeObjects.set(id, { id, coords: coordBlocks });
+          console.log('Added composite object:', id, coordBlocks.length, 'coords');
+        } else {
+          console.log('Failed to parse composite object:', trimmed);
+        }
+      }
+    }
+    
+    // Parse instances
+    if (currentSection === 'instances') {
+      console.log('Parsing instance:', trimmed);
+      const match = trimmed.match(/< (I\d+) @ (\w+) \| \{ Ref - \| Rot - \} \{ (\d+),(\d+) \} >/);
+      if (match) {
+        const [, instanceId, objectId, y, x] = match;
+        instances.push({ instanceId, objectId, y: parseInt(y), x: parseInt(x) });
+        console.log('Added instance:', instanceId, objectId, y, x);
+      } else {
+        console.log('Failed to parse instance:', trimmed);
+        // Try more flexible pattern
+        const altMatch = trimmed.match(/< (\w+) @ (\w+) \| .* \{ (\d+),(\d+) \} >/);
+        if (altMatch) {
+          const [, instanceId, objectId, y, x] = altMatch;
+          instances.push({ instanceId, objectId, y: parseInt(y), x: parseInt(x) });
+          console.log('Added instance (alt pattern):', instanceId, objectId, y, x);
+        }
+      }
+    }
+  }
+  
+  console.log('Parsing complete:');
+  console.log('- Atomic objects found:', atomicObjects.size);
+  console.log('- Composite objects found:', compositeObjects.size);
+  console.log('- Instances found:', instances.length);
+  
+  return { atomicObjects, compositeObjects, instances };
+}
+
+function clearCurrentScene() {
+  State.placements = [];
+  State.selected = null;
+  State.reg.clear();
+  State.compositeObjects.clear();
+  State.compositeNameCounter = 1;
+  ID_CONSOLIDATION.reset();
+  refreshPalette();
+  updateRightPanel();
+  draw();
+  pushHistory();
+}
+
+function createPlacementFromInstance(instance, atomicObjects, compositeObjects) {
+  const { objectId, y, x } = instance;
+  
+  // First, ensure all atomic objects are in the registry
+  for (const [id, atomic] of atomicObjects) {
+    if (!State.reg.map.has(id)) {
+      State.reg.add(new Atomic(id, atomic.h, atomic.w));
+      console.log(`Added atomic object to registry: ${id} (${atomic.h}x${atomic.w})`);
+    }
+  }
+  
+  if (compositeObjects.has(objectId)) {
+    // This is a composite object - create multiple placements
+    const composite = compositeObjects.get(objectId);
+    const placements = [];
+    
+    console.log(`Creating composite object ${objectId} with ${composite.coords.length} components`);
+    
+    for (const coordBlock of composite.coords) {
+      const match = coordBlock.match(/\{ (\d+),(\d+) ; (\d+),(\d+) \}/);
+      if (match) {
+        const [, y1, x1, y2, x2] = match;
+        const h = parseInt(y2) - parseInt(y1) + 1;
+        const w = parseInt(x2) - parseInt(x1) + 1;
+        
+        // Find matching atomic object by dimensions (try both orientations)
+        let atomicId = null;
+        let isVertical = false;
+        for (const [id, atomic] of atomicObjects) {
+          if (atomic.h === h && atomic.w === w) {
+            atomicId = id;
+            isVertical = false;
+            break;
+          } else if (atomic.h === w && atomic.w === h) {
+            atomicId = id;
+            isVertical = true;
+            break;
+          }
+        }
+        
+        if (!atomicId) {
+          // Create new atomic object if no match found
+          atomicId = `R${Math.random().toString(36).substr(2, 9)}`;
+          State.reg.add(new Atomic(atomicId, h, w));
+          console.log(`Created new atomic object: ${atomicId} (${h}x${w})`);
+        }
+        
+        // Create placement
+        const placement = new Placement({
+          baseId: atomicId,
+          vshift: [y + parseInt(y1) - 1, x + parseInt(x1) - 1],
+          vertical: isVertical
+        });
+        placements.push(placement);
+        // Add to State.placements immediately so generateUniquePlacementId can see it
+        State.placements.push(placement);
+        console.log(`Created placement: ${placement.uid} (${atomicId}) at [${placement.vshift[0]}, ${placement.vshift[1]}]`);
+      }
+    }
+    
+    return placements;
+  } else if (atomicObjects.has(objectId)) {
+    // This is an atomic object
+    const atomic = atomicObjects.get(objectId);
+    const atomicId = objectId; // Use the actual ID from the notation
+    State.reg.add(new Atomic(atomicId, atomic.h, atomic.w));
+    
+    const placement = new Placement({
+      baseId: atomicId,
+      vshift: [y, x],
+      vertical: false
+    });
+    
+    // Add to State.placements immediately so generateUniquePlacementId can see it
+    State.placements.push(placement);
+    
+    return [placement];
+  }
+  
+  return [];
+}
+
+function importFromNotation(content) {
+  console.log('Starting import from notation...');
+  console.log('Content length:', content.length);
+  console.log('Content preview:', content.substring(0, 200) + '...');
+  
+  try {
+    const { atomicObjects, compositeObjects, instances } = parseNotationFile(content);
+    
+    console.log('Parsed results:');
+    console.log('- Atomic objects:', atomicObjects.size);
+    console.log('- Composite objects:', compositeObjects.size);
+    console.log('- Instances:', instances.length);
+    
+    // Clear current scene
+    clearCurrentScene();
+    console.log('Scene cleared');
+    
+    // Create placements from instances
+    for (const instance of instances) {
+      console.log('Processing instance:', instance);
+      const placements = createPlacementFromInstance(instance, atomicObjects, compositeObjects);
+      console.log('Created placements:', placements.length);
+      // Note: placements are already added to State.placements in createPlacementFromInstance
+      for (const placement of placements) {
+        console.log('Added placement:', placement.uid, placement.baseId, placement.vshift);
+      }
+    }
+    
+    console.log('Total placements after import:', State.placements.length);
+    
+    // Update UI
+    refreshPalette();
+    updateRightPanel();
+    // Force update composite objects after importing
+    updateCompositeObjects(true);
+    draw();
+    pushHistory();
+    
+    console.log(`Import completed: ${instances.length} instances with ${State.placements.length} total placements`);
+  } catch (error) {
+    console.error('Import failed:', error);
+    console.error('Error stack:', error.stack);
+    alert('Failed to import notation file. Please check the format. Check console for details.');
+  }
+}
+
+/* ===================== Rotate ===================== */
+function attemptRotate(p){
+  console.log('Attempting to rotate placement:', p.uid, 'vertical:', p.vertical);
+  const r = p.rect(State.reg);
+  const [H,W] = p.usedDims(State.reg);
+  
+  // Don't rotate squares - they look the same in both orientations
+  if(H === W) {
+    console.log('Rotation blocked: square shapes cannot be rotated');
+    return;
+  }
+  
+  // new orientation swaps H/W; keep same top-left (dy,dx)
+  const nH=W, nW=H;
+  const cand = { y1:r.y1, x1:r.x1, y2:r.y1+nH-1, x2:r.x1+nW-1, H:nH, W:nW, dy:r.y1, dx:r.x1 };
+  if(!wouldOverlap(cand, p.uid)){
+    p.vertical = !p.vertical;
+    console.log('Rotation successful, new vertical:', p.vertical);
+  } else {
+    console.log('Rotation blocked by overlap');
+  }
+}
+
+
+/* ===================== Reshape & Apply ===================== */
+function commitReshape(p, usedH, usedW, dy, dx){
+  const applyAll = byId('applyAll').checked;
+  const canonH = Math.min(usedH, usedW);
+  const canonW = Math.max(usedH, usedW);
+  const vertical = usedH > usedW;
+
+  const cand = { y1:dy, x1:dx, y2:dy+usedH-1, x2:dx+usedW-1, H:usedH, W:usedW, dy, dx };
+  if(wouldOverlap(cand, p.uid)) return;
+
+  if(applyAll){
+    State.reg.update(p.baseId, canonH, canonW);
+    if(anyConflictForBase(p.baseId)){
+      // fallback: detach this placement
+      const newId = ID_CONSOLIDATION.getCanonicalAtomicId(canonH, canonW);
+      State.reg.add(new Atomic(newId, canonH, canonW));
+      p.baseId = newId; p.vertical = vertical; p.vshift=[dy,dx];
+      refreshPalette();
+    } else {
+      p.vertical = vertical; p.vshift=[dy,dx];
+    }
+  }else{
+    const newId = ID_CONSOLIDATION.getCanonicalAtomicId(canonH, canonW);
+    State.reg.add(new Atomic(newId, canonH, canonW));
+    p.baseId = newId; p.vertical = vertical; p.vshift=[dy,dx];
+    refreshPalette();
+  }
+  updateRightPanel();
+}
+function anyConflictForBase(id){
+  const group = State.placements.filter(p=>p.baseId===id);
+  for(let i=0;i<group.length;i++){
+    for(let j=i+1;j<group.length;j++){
+      const a = group[i].rect(State.reg);
+      const b = group[j].rect(State.reg);
+      if(rectsOverlap(a,b)) return true;
+    }
+  }
+  return false;
+}
+
+/* ===================== Palette & Scene UI ===================== */
+function refreshPalette(){
+  const list = byId('atomList');
+  list.innerHTML = '';
+  for(const a of State.reg.list()){
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = `<div><strong>${a.id}</strong> <span class="muted">H×W=${a.H}×${a.W}</span></div>
+                     <div><button class="ghost" data-id="${a.id}">Place</button></div>`;
+    list.appendChild(row);
+    row.querySelector('button').onclick = ()=> placeAtom(a.id);
+  }
+}
+
+byId('addAtom').onclick = ()=>{
+  try{
+    const id = byId('atomId').value.trim();
+    const H = parseInt(byId('atomH').value,10);
+    const W = parseInt(byId('atomW').value,10);
+    const a = new Atomic(id,H,W);
+    State.reg.add(a);
+    refreshPalette();
+    draw();
+    pushHistory();
+  }catch(err){ alert(err.message); }
+};
+byId('placeFirst').onclick = ()=>{
+  const first = State.reg.list()[0];
+  if(!first){ alert('Add an atomic rectangle to the palette first.'); return; }
+  placeAtom(first.id);
+};
+byId('clearPalette').onclick = ()=>{ State.reg.clear(); refreshPalette(); draw(); pushHistory(); };
+
+function placeAtom(id){
+  // find a free spot scanning right then down
+  const a = State.reg.get(id);
+  const [Hc,Wc]=a.dims();
+  const usedH=Hc, usedW=Wc;
+  let dy=1, dx=1;
+  const maxScan=200;
+  for(let row=1; row<maxScan; row++){
+    let placed=false;
+    for(let col=1; col<maxScan; col++){
+      const cand = {y1:row,x1:col,y2:row+usedH-1,x2:col+usedW-1,H:usedH,W:usedW};
+      if(!wouldOverlap(cand,null)){ dy=row; dx=col; placed=true; break; }
+    }
+    if(placed) break;
+  }
+  const p = new Placement({baseId:id, vshift:[dy,dx], vertical:false});
+  State.placements.push(p);
+  State.selected = p.uid;
+  updateRightPanel(); draw(); pushHistory();
+}
+
+/* Grid controls */
+byId('cellSize').oninput = ()=>{ State.cell = clamp(parseInt(byId('cellSize').value,10),16,96); draw(); pushHistory(); };
+byId('boldGrid').onchange = ()=>{ State.bold5 = byId('boldGrid').checked; draw(); pushHistory(); };
+
+/* Right panel status */
+function updateRightPanel(){
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  byId('selBadge').textContent = sel ? sel.uid : '—';
+  const selStatus = byId('selStatus');
+  if(!sel){
+    selStatus.textContent = 'No selection';
+    selStatus.className = 'status';
+    byId('selLabel').textContent = '—';
+    byId('selDims').textContent = '—';
+    byId('selPos').textContent = '—';
+    byId('selCanon').textContent = '—';
+    byId('selNotation').textContent = '—';
+  }else{
+    selStatus.textContent = 'Shape selected';
+    selStatus.className = 'status ok';
+    const r = sel.rect(State.reg);
+    const a = State.reg.get(sel.baseId);
+    
+    // Show clean instance ID (Q1, Q2, Q3, etc.)
+    byId('selLabel').textContent = `${sel.vertical?'^ ':''}${sel.baseId} [${sel.uid}]`;
+    byId('selDims').textContent = `${r.H}×${r.W}`;
+    byId('selPos').textContent = `${r.y1},${r.x1}`;
+    byId('selCanon').textContent = `< ${a.id} | 1,1 ; ${a.H},${a.W} >`;
+    // Placement-oriented atomic usage: if vertical and non-square, show ^ before id and swap dims
+    const dims = (sel.vertical && a.H!==a.W) ? `${a.W},${a.H}` : `${a.H},${a.W}`;
+    byId('selNotation').textContent = `< ${sel.vertical?'^ ':''}${a.id} | 1,1 ; ${dims} >`;
+    byId('editH').value = r.H;
+    byId('editW').value = r.W;
+    byId('editDY').value = r.y1;
+    byId('editDX').value = r.x1;
+  }
+  byId('countP').textContent = String(State.placements.length);
+  byId('countC').textContent = String(totalCells());
+}
+function totalCells(){
+  let n=0;
+  for(const p of State.placements){ const r=p.rect(State.reg); n += r.H*r.W; }
+  return n;
+}
+
+/* Contacts panel */
+function updateContactPanel(){
+  const wrap = byId('contactList');
+  wrap.innerHTML = "";
+  let k=1;
+  for(const c of State.contacts){
+    const left = `&lt; ${c.A.hat?'^ ':''}${c.A.id} | ( ${c.A.y1},${c.A.x1} ; ${c.A.y2},${c.A.x2} )${c.A.edge} &gt;`;
+    const right= `&lt; ${c.B.hat?'^ ':''}${c.B.id} | ( ${c.B.y1},${c.B.x1} ; ${c.B.y2},${c.B.x2} )${c.B.edge} &gt;`;
+    const join = `&lt; C${k} | ${left} ${right} &gt;`;
+    const div=document.createElement('div');
+    div.className='contactItem mono';
+    div.innerHTML = `Contact ${k}:<br>${left}  ↔  ${right}<br><span class="muted">${join}</span>`;
+    wrap.appendChild(div);
+    k++;
+  }
+  if(State.contacts.length===0){
+    const none=document.createElement('div');
+    none.className='muted';
+    none.textContent='No contacting edges.';
+    wrap.appendChild(none);
+  }
+}
+
+/* Selection actions */
+function toggleHat(){
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  if(!sel) return;
+  
+  const r = sel.rect(State.reg);
+  const [H,W] = sel.usedDims(State.reg);
+  
+  // Don't toggle squares - they look the same in both orientations
+  if(H === W) {
+    console.log('Hat toggle blocked: square shapes cannot be toggled');
+    return;
+  }
+  
+  console.log('Toggling vertical orientation for placement:', sel.uid, 'vertical:', sel.vertical);
+  attemptRotate(sel);
+  console.log('Vertical orientation toggled to:', sel.vertical);
+  updateRightPanel(); draw();
+}
+
+function cycleThroughInstances(){
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  if(!sel) {
+    console.log('No selection to cycle');
+    return;
+  }
+  
+  // Find all placements with the same baseId
+  const sameBaseIdPlacements = State.placements.filter(p => p.baseId === sel.baseId);
+  console.log(`Found ${sameBaseIdPlacements.length} instances of ${sel.baseId}`);
+  
+  if(sameBaseIdPlacements.length <= 1) {
+    console.log('Only one instance, no cycling needed');
+    return;
+  }
+  
+  // Find current index and cycle to next
+  const currentIndex = sameBaseIdPlacements.indexOf(sel);
+  const nextIndex = (currentIndex + 1) % sameBaseIdPlacements.length;
+  const nextPlacement = sameBaseIdPlacements[nextIndex];
+  
+  console.log(`Cycling from instance ${currentIndex + 1} to ${nextIndex + 1}/${sameBaseIdPlacements.length}`);
+  console.log(`From ${sel.uid} at [${sel.vshift[0]}, ${sel.vshift[1]}] to ${nextPlacement.uid} at [${nextPlacement.vshift[0]}, ${nextPlacement.vshift[1]}]`);
+  
+  // Select the next instance
+  State.selected = nextPlacement.uid;
+  updateRightPanel();
+  draw();
+}
+byId('toggleHat').onclick = ()=>{ toggleHat(); pushHistory(); };
+
+function deleteSelected(){
+  if(!State.selected) return;
+  State.placements = State.placements.filter(p=>p.uid!==State.selected);
+  State.selected = null;
+  updateRightPanel();
+  // Force update composite objects after deleting
+  updateCompositeObjects(true);
+  draw();
+}
+byId('deleteSel').onclick = ()=>{ deleteSelected(); pushHistory(); };
+
+byId('duplicate').onclick = ()=>{
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  if(!sel) return;
+  const r = sel.rect(State.reg);
+  // try several offsets to find a free spot
+  const offsets = [[0,r.W+1],[r.H+1,0],[0,-(r.W+1)],[-(r.H+1),0],[r.H+1,r.W+1]];
+  let dy=r.y1, dx=r.x1+r.W+1;
+  for(const [oy,ox] of offsets){
+    const c = { y1:r.y1+oy, x1:r.x1+ox, y2:r.y1+oy+r.H-1, x2:r.x1+ox+r.W-1, H:r.H,W:r.W };
+    if(!wouldOverlap(c,null)){ dy=c.y1; dx=c.x1; break; }
+  }
+  const dup = new Placement({baseId:sel.baseId, vshift:[dy, dx], vertical:sel.vertical, color:nextColor()});
+  if(!wouldOverlap(dup.rect(State.reg),null)){
+    State.placements.push(dup);
+    State.selected = dup.uid;
+    updateRightPanel();
+    // Force update composite objects after duplicating
+    updateCompositeObjects(true);
+    draw(); 
+    pushHistory();
+  }
+};
+
+byId('applyNumeric').onclick = ()=>{
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  if(!sel) return;
+  const H = Math.max(1, parseInt(byId('editH').value,10)||1);
+  const W = Math.max(1, parseInt(byId('editW').value,10)||1);
+  const dy = Math.round(parseFloat(byId('editDY').value)||1);
+  const dx = Math.round(parseFloat(byId('editDX').value)||1);
+  const cand = { y1:dy, x1:dx, y2:dy+H-1, x2:dx+W-1, H, W, dy, dx };
+  if(!wouldOverlap(cand, sel.uid)){
+    commitReshape(sel, H, W, dy, dx);
+    // Force update composite objects after numeric edit
+    updateCompositeObjects(true);
+    draw(); 
+    pushHistory();
+  }
+};
+byId('detachNow').onclick = ()=>{
+  const sel = State.placements.find(p=>p.uid===State.selected);
+  if(!sel) return;
+  const r = sel.rect(State.reg);
+  commitReshape(sel, r.H, r.W, r.y1, r.x1);
+  // Force update composite objects after detaching
+  updateCompositeObjects(true);
+  draw(); 
+  pushHistory();
+};
+
+byId('resetScene').onclick = ()=>{ State.placements=[]; State.selected=null; updateRightPanel(); draw(); pushHistory(); };
+byId('fitView').onclick = ()=>{
+  const w = canvas.width/(window.devicePixelRatio||1);
+  const h = canvas.height/(window.devicePixelRatio||1);
+  const g = State.cell;
+  if(State.placements.length===0) return;
+  const p = State.placements[0];
+  const r = p.rect(State.reg);
+  const cy = Math.floor((h/g)/2) - Math.floor(r.H/2) + 1;
+  const cx = Math.floor((w/g)/2) - Math.floor(r.W/2) + 1;
+  const cand = { y1:Math.max(1,cy), x1:Math.max(1,cx), y2:0, x2:0, H:r.H, W:r.W };
+  cand.y2 = cand.y1 + r.H - 1; cand.x2 = cand.x1 + r.W - 1;
+  if(!wouldOverlap(cand, p.uid)){ p.vshift=[cand.y1,cand.x1]; }
+  updateRightPanel(); draw(); pushHistory();
+};
+
+// ID Consolidation event handlers
+byId('consolidateIds').onclick = ()=>{
+  const stats = ID_CONSOLIDATION.consolidateAll();
+  const statsDiv = byId('consolidationStats');
+  statsDiv.style.display = 'block';
+  statsDiv.innerHTML = `
+    <div class="muted">Comprehensive ID consolidation complete:</div>
+    <div>• Atomic objects cleaned: ${stats.atomicConsolidated}</div>
+    <div>• Composite objects cleaned: ${stats.compositeConsolidated}</div>
+    <div>• Instance IDs cleaned: ${stats.placementConsolidated}</div>
+    <div>• All IDs are now sequential and clean!</div>
+  `;
+  refreshPalette();
+  updateRightPanel();
+  draw();
+  pushHistory();
+};
+
+byId('resetConsolidation').onclick = ()=>{
+  ID_CONSOLIDATION.reset();
+  byId('consolidationStats').style.display = 'none';
+  refreshPalette();
+  updateRightPanel();
+  draw();
+  pushHistory();
+};
+
+
+/* Z-order */
+byId('bringFront').onclick = ()=>{
+  if(!State.selected) return;
+  const i = State.placements.findIndex(p=>p.uid===State.selected);
+  if(i>=0){ const [p]=State.placements.splice(i,1); State.placements.push(p); draw(); pushHistory(); }
+};
+byId('sendBack').onclick = ()=>{
+  if(!State.selected) return;
+  const i = State.placements.findIndex(p=>p.uid===State.selected);
+  if(i>=0){ const [p]=State.placements.splice(i,1); State.placements.unshift(p); draw(); pushHistory(); }
+};
+
+/* Undo/Redo buttons */
+byId('undoBtn').onclick = ()=>undo();
+byId('redoBtn').onclick = ()=>redo();
+
+// Copy button event handlers
+byId('copyContacts').onclick = copyContacts;
+byId('copySelection').onclick = copySelection;
+byId('copyScene').onclick = copyScene;
+byId('copyAllObjects').onclick = copyAllObjects;
+byId('copyConsolidation').onclick = copyConsolidation;
+
+// Export button event handlers
+byId('exportSVG').onclick = exportSVG;
+byId('exportNotation').onclick = exportNotation;
+
+// Import button event handlers
+byId('importNotation').onclick = importNotation;
+byId('importFile').onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  // Ask for confirmation before clearing
+  if (State.placements.length > 0) {
+    if (!confirm('This will clear all current objects. Continue?')) {
+      e.target.value = ''; // Reset file input
+      return;
+    }
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    importFromNotation(e.target.result);
+    e.target.value = ''; // Reset file input
+  };
+  reader.readAsText(file);
+};
+
+/* Tool switches */
+byId('toolSelect').onchange = ()=>{ State.tool="select"; State.drawDrag=null; draw(); };
+byId('toolDraw').onchange = ()=>{ State.tool="draw"; };
+
+/* Helpers */
+function ghostToRect(gd){
+  const y1 = Math.min(gd.y1, gd.y2);
+  const x1 = Math.min(gd.x1, gd.x2);
+  const y2 = Math.max(gd.y1, gd.y2);
+  const x2 = Math.max(gd.x1, gd.x2);
+  const H = Math.max(1, y2-y1+1);
+  const W = Math.max(1, x2-x1+1);
+  return { y1, x1, y2, x2, H, W, dy:y1, dx:x1 };
+}
+
+/* ===================== Init ===================== */
+(function init(){
+  // Initialize with consolidation system
+  const initialAtom = new Atomic('R1',3,4);
+  State.reg.add(initialAtom);
+  
+  // Create a test placement to demonstrate rotation
+  const testPlacement = new Placement({baseId: 'R1', vshift: [2, 2], vertical: false});
+  State.placements.push(testPlacement);
+  
+  refreshPalette();
+  resizeCanvas();
+  updateRightPanel();
+  pushHistory();
+})();
+</script>
+</body>
+</html>
