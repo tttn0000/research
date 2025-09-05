@@ -159,6 +159,9 @@
           <label>Full contact required
             <span class="rowline"><input id="fullContactRequired" type="checkbox" /></span>
           </label>
+          <label>Attach to base only
+            <span class="rowline"><input id="attachBaseOnly" type="checkbox" checked /></span>
+          </label>
           <label>Show bounding box
             <span class="rowline"><input id="showBBox" type="checkbox" checked /></span>
           </label>
@@ -385,7 +388,7 @@
     return false;
   }
 
-  function meetsContactRequirements(rectCells, shapeSet, minContact, fullContact){
+  function meetsContactRequirements(rectCells, shapeSet, minContact, fullContact, rects, attachBaseOnly){
     if(!touchesByEdge(rectCells, shapeSet)) return false;
     
     if(minContact <= 1 && !fullContact) return true;
@@ -444,53 +447,30 @@
       if(!hasMinContact) return false;
     }
     
-    // Check full contact requirement
+    // Check full contact requirement: the attaching edge of the appending rectangle
+    // must be fully contained within a single side of an existing rectangle.
     if(fullContact){
-      const rect = bboxFromCells(rectCells);
-      const rectW = rect.w, rectH = rect.h;
-      
-      // Check if either full width or full height is in contact
-      let fullWidthContact = false, fullHeightContact = false;
-      
-      // Check for full width contact (horizontal edges)
-      for(let y = rect.minY; y <= rect.maxY; y++){
-        let hasTopContact = false, hasBottomContact = false;
-        for(let x = rect.minX; x <= rect.maxX; x++){
-          const cell = key(x, y);
-          if(rectCells.includes(cell)){
-            // Check top and bottom edges
-            const topNeighbor = key(x, y-1);
-            const bottomNeighbor = key(x, y+1);
-            if(shapeSet.has(topNeighbor)) hasTopContact = true;
-            if(shapeSet.has(bottomNeighbor)) hasBottomContact = true;
-          }
-        }
-        if(hasTopContact || hasBottomContact){
-          fullWidthContact = true;
-          break;
-        }
-      }
-      
-      // Check for full height contact (vertical edges)
-      for(let x = rect.minX; x <= rect.maxX; x++){
-        let hasLeftContact = false, hasRightContact = false;
-        for(let y = rect.minY; y <= rect.maxY; y++){
-          const cell = key(x, y);
-          if(rectCells.includes(cell)){
-            // Check left and right edges
-            const leftNeighbor = key(x-1, y);
-            const rightNeighbor = key(x+1, y);
-            if(shapeSet.has(leftNeighbor)) hasLeftContact = true;
-            if(shapeSet.has(rightNeighbor)) hasRightContact = true;
-          }
-        }
-        if(hasLeftContact || hasRightContact){
-          fullHeightContact = true;
-          break;
-        }
-      }
-      
-      if(!fullWidthContact && !fullHeightContact) return false;
+      const bb = bboxFromCells(rectCells);
+      const x = bb.minX, y = bb.minY, rw = bb.w, rh = bb.h;
+
+      // helper: check candidate edge against one base rect side (containment)
+      const containedOnSomeSide = (base) => {
+        const bx = base.x, by = base.y, bw = base.w, bh = base.h;
+        // candidate bottom attaches to base top
+        if(rw >= minContact && y === by + bh && x >= bx && (x + rw - 1) <= (bx + bw - 1)) return true;
+        // candidate top attaches to base bottom
+        if(rw >= minContact && (y + rh) === by && x >= bx && (x + rw - 1) <= (bx + bw - 1)) return true;
+        // candidate left attaches to base right
+        if(rh >= minContact && x === bx + bw && y >= by && (y + rh - 1) <= (by + bh - 1)) return true;
+        // candidate right attaches to base left
+        if(rh >= minContact && (x + rw) === bx && y >= by && (y + rh - 1) <= (by + bh - 1)) return true;
+        return false;
+      };
+
+      let ok = false;
+      const bases = attachBaseOnly ? [rects[0]] : rects;
+      for(const b of bases){ if(containedOnSomeSide(b)) { ok = true; break; } }
+      if(!ok) return false;
     }
     
     return true;
@@ -543,6 +523,8 @@
     return true;
   }
 
+  // (removed) previous run-length pruning helper; superseded by base-side containment checks
+
   // Expanded-state key = symmetry/translation canonical + anchor position to avoid redundant expansion
   function expandedKey(shapeSet, sym){
     const arr = Array.from(shapeSet);
@@ -563,6 +545,7 @@
   const appendMinW = $('#appendMinW'), appendMinH = $('#appendMinH');
   const maxRects = $('#maxRects'), maxArea = $('#maxArea'), minArea = $('#minArea');
   const minContactLength = $('#minContactLength'), fullContactRequired = $('#fullContactRequired');
+  const attachBaseOnly = $('#attachBaseOnly');
   const maxResults = $('#maxResults'), showBBox = $('#showBBox'), showGrid = $('#showGrid');
   const frontierMode = $('#frontierMode'), shuffleMode = $('#shuffleMode'), randSeed = $('#randSeed');
 
@@ -1403,14 +1386,14 @@
             for(const x of xs){
               const rcells = cellsFromRect(x,y,rw,rh);
               if(overlaps(rcells, cells)) continue;
-              if(!meetsContactRequirements(rcells, cells, minContactLength, fullContactRequired)) continue;
+              if(!meetsContactRequirements(rcells, cells, minContactLength, fullContactRequired, rects, attachBaseOnly && !!attachBaseOnly.checked)) continue;
               const newArea = area + rcells.length;
               if(newArea > maxArea) continue;
 
               const newSet = new Set(cells);
               for(const c of rcells) newSet.add(c);
 
-              maybeRecord(newSet, rects.concat([{x,y,w:rw,h:rh}]), baseHL);
+              maybeRecord(newSet, rects.concat([{x:x,y:y,w:rw,h:rh}]), baseHL);
 
               const eKey = expandedKey(newSet, SYM_DEDUP);
               if(rects.length < maxRects && newArea <= maxArea && !expanded.has(eKey)){
@@ -1465,6 +1448,7 @@
       maxArea: Number(maxArea.value),
       minContactLength: Number(minContactLength.value),
       fullContactRequired: !!fullContactRequired.checked,
+      attachBaseOnly: !!attachBaseOnly.checked,
       maxResults: Number(maxResults.value),
       dedupeSym: true, // always on
       frontierMode: frontierMode.value,
@@ -1660,6 +1644,7 @@
       if(params.minContactLength) minContactLength.value = Math.max(1, Math.min(64, params.minContactLength));
       if(typeof params.fullContactRequired === 'boolean') fullContactRequired.checked = params.fullContactRequired;
       if(params.maxResults) maxResults.value = Math.max(1, Math.min(50000, params.maxResults));
+      if(typeof params.attachBaseOnly === 'boolean') attachBaseOnly.checked = params.attachBaseOnly;
       if(params.frontierMode) frontierMode.value = params.frontierMode;
       if(params.shuffleMode) shuffleMode.value = params.shuffleMode;
       if(params.randSeed) randSeed.value = Math.max(0, Math.min(4294967295, params.randSeed));
@@ -1674,6 +1659,13 @@
   // ---------- Generate / Stop / Navigation
   btnGen.addEventListener('click', ()=>{
     const rng = mulberry32(Number(randSeed.value)>>>0);
+    // Auto-correct upper bounds to avoid impossible parameter combinations
+    const baseMinArea = Number(baseMinW.value) * Number(baseMinH.value);
+    const appendMinArea = Number(appendMinW.value) * Number(appendMinH.value);
+    const minTotalAreaPossible = baseMinArea + Math.max(0, Number(maxRects.value)) * appendMinArea;
+    if(Number(baseMaxArea.value) < baseMinArea) baseMaxArea.value = baseMinArea;
+    if(Number(maxArea.value) < minTotalAreaPossible) maxArea.value = minTotalAreaPossible;
+    if(Number(minArea.value) > Number(maxArea.value)) minArea.value = Number(maxArea.value);
     const params = {
       canvasW: Number(W.value),
       canvasH: Number(H.value),
@@ -1691,6 +1683,7 @@
       maxArea: Number(maxArea.value),
       minContactLength: Number(minContactLength.value),
       fullContactRequired: !!fullContactRequired.checked,
+      attachBaseOnly: !!attachBaseOnly.checked,
       maxResults: Number(maxResults.value),
       frontierMode: frontierMode.value,
       shuffleMode: shuffleMode.value,
@@ -1769,7 +1762,7 @@
   // Update parameters JSON when any parameter changes
   const allInputs = [W, H, baseMinW, baseMinH, allowLargerBase, baseMaxArea, basePlacementMode, baseX, baseY, 
                     appendMinW, appendMinH, maxRects, minArea, maxArea, minContactLength, fullContactRequired,
-                    maxResults, showBBox, showGrid, frontierMode, shuffleMode, randSeed];
+                    attachBaseOnly, maxResults, showBBox, showGrid, frontierMode, shuffleMode, randSeed];
   allInputs.forEach(input => {
     if(input) input.addEventListener('change', updateParamsJSON);
     if(input) input.addEventListener('input', updateParamsJSON);
