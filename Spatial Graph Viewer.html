@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spatial Graph Viewer — Normal & Linear (Exterior→Interior)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    --bg:#f8fafc;          /* canvas background */
+    --panel:#ffffff;       /* UI background */
+    --ink:#0f172a;         /* UI text */
+    --muted:#64748b;       /* secondary text */
+    --accent:#2563eb;      /* controls accent */
+    --accent-2:#06b6d4;    /* secondary accent */
+    --warn:#ea580c;
+    --good:#10b981;
+
+    --edge:#94a3b8;        /* edge colour (base) */
+    --edge-soft:#cbd5e1;   /* edge faint */
+    --guide:#cbd5e1;       /* dotted guides in linear mode */
+
+    --node-label:#0b1224;  /* label text on light pills */
+    --tooltip:#0b1224;     /* tooltip text */
+    --tooltip-bg:#ffffff;  /* tooltip bg */
+  }
+
+  html,body{height:100%;margin:0;background:var(--bg);font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
+  *{box-sizing:border-box}
+
+  .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;height:100%}
+  .left{
+    background:linear-gradient(180deg,var(--panel),#f3f4f6 70%, #eef2f7);
+    color:var(--ink);padding:14px 14px 10px 16px;display:flex;flex-direction:column
+  }
+  h1{margin:0 0 10px 0;font-size:18px;letter-spacing:.2px;color:#1f2937}
+  .controls{display:grid;grid-template-columns:1fr;gap:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row label{font-size:12px;color:var(--muted)}
+  select,button,.toggle,textarea{
+    border:1px solid #e2e8f0;background:#ffffff;color:var(--ink);
+    border-radius:8px;padding:8px 10px;font-size:13px;outline:none
+  }
+  select,button{cursor:pointer}
+  .toggle{display:flex;gap:8px;padding:6px 8px}
+  .toggle input{margin-right:6px}
+  button.primary{background:#e5edff;border-color:#bfdbfe}
+  button.primary:hover{background:#dbeafe}
+  button.ghost{background:#ffffff;border-color:#e2e8f0}
+  
+  .view-mode-buttons{display:flex;gap:4px}
+  .view-mode-btn{
+    flex:1;padding:6px 12px;font-size:12px;border-radius:6px;
+    background:#ffffff;border:1px solid #e2e8f0;color:var(--muted);
+    transition:all 0.2s ease
+  }
+  .view-mode-btn:hover{background:#f8fafc;color:var(--ink)}
+  .view-mode-btn.active{
+    background:#e5edff;border-color:#bfdbfe;color:#1e3a8a;font-weight:600
+  }
+  .note{font-size:12px;color:var(--muted)}
+  .error{color:#fecaca;background:#7f1d1d22;border:1px solid #fecaca44;padding:8px;border-radius:8px}
+  textarea{
+    width:100%;min-height:160px;max-height:34vh;resize:vertical;line-height:1.35;
+    font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-size:12px
+  }
+
+  .meta{margin-top:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff}
+  .meta h3{margin:0 0 6px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
+  .meta .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;font-size:12px;color:#334155}
+
+  .legend{margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:8px}
+  .legend h3{margin:0 0 6px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
+  .legend .items{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:6px}
+  .legend .chip{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .legend .sw{width:14px;height:14px;border-radius:50%;border:1px solid #e2e8f0}
+
+  .rooms{margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:8px}
+  .rooms h3{margin:0 0 6px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
+  .rooms .header{display:grid;grid-template-columns:1fr 70px 90px 70px;gap:8px;font-size:11px;color:#475569;font-weight:600}
+  .rooms .row{display:grid;grid-template-columns:1fr 70px 90px 70px;gap:8px;font-size:12px;color:#334155}
+
+  .right{position:relative}
+  svg{width:100%;height:100%}
+  .hud{
+    position:absolute;left:10px;top:10px;background:#ffffffcc;border:1px solid #e2e8f0;
+    color:var(--ink);padding:6px 8px;border-radius:8px;font-size:12px;backdrop-filter: blur(3px)
+  }
+  .hud b{color:#1f2937}
+  .toolbar{
+    position:absolute;right:10px;top:10px;display:flex;gap:8px
+  }
+
+  .filter-panel{
+    position:absolute;right:160px;top:10px;background:#ffffff;border:1px solid #e2e8f0;
+    padding:8px;border-radius:8px;min-width:280px;box-shadow:0 8px 24px rgba(0,0,0,.08);
+    display:none;z-index:3
+  }
+  .filter-panel .row{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;margin-bottom:6px}
+  .filter-panel h4{margin:0 0 6px 0;font-size:12px;color:#1f2937}
+  .filter-panel input, .filter-panel select{border:1px solid #e2e8f0;background:#fff;color:#0f172a;border-radius:6px;padding:6px 8px;font-size:12px}
+  .filter-panel .modes{display:flex;gap:10px;font-size:12px;color:#334155;margin:6px 0}
+  .filter-panel .actions{display:flex;gap:8px;justify-content:flex-end}
+  .filter-panel .actions button{padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc}
+
+  /* Nodes & links */
+  .link{stroke:var(--edge);stroke-opacity:.75}
+  .link.backbone{stroke:var(--edge);stroke-opacity:.95;stroke-width:2.2}
+  .link.faint{stroke:var(--edge-soft);stroke-opacity:.9}
+  .node{cursor:grab}
+  .node:active{cursor:grabbing}
+  .node .node-shape{filter:url(#drop)}
+  .node text{
+    font-size:12px;fill:#0f172a;paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round
+  }
+  .level-guide{stroke:var(--guide);stroke-dasharray:3 5;stroke-width:.8;opacity:.7}
+
+  /* Tooltip */
+  .tip{
+    position:absolute;pointer-events:none;z-index:5;transform:translate(-50%, calc(-100% - 8px));
+    background:var(--tooltip-bg);color:var(--tooltip);
+    border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;min-width:220px
+  }
+  .tip h4{margin:0 0 6px 0;font-size:14px}
+  .tip .sub{font-size:12px;color:#374151;margin:0 0 8px 0}
+  .tip .kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:12px}
+  .tip .kv div{color:#111827}
+  .tip .muted{color:#6b7280}
+
+  /* Small helpers */
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #e5e7eb}
+  .hidden{display:none}
+
+  /* Smaller font for exterior roots list */
+  #rootSel{font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <h1>Spatial Graph Viewer</h1>
+
+    <div class="controls">
+      <div class="row">
+        <label>View</label>
+        <div class="view-mode-buttons">
+          <button id="normalMode" class="view-mode-btn active" data-mode="normal" title="Normal graph (all adjacencies)">Normal</button>
+          <button id="linearMode" class="view-mode-btn" data-mode="linear" title="Linear graph (exterior → interior)">Linear</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label for="rootSel">Exterior roots</label>
+        <select id="rootSel" multiple size="4" title="Exterior nodes used as sources in linear view">
+        </select>
+      </div>
+
+      <div class="row">
+        <label>Refresh</label>
+        <span class="toggle">
+          <input type="checkbox" id="auto" checked>
+          <span>Auto-render on pause</span>
+        </span>
+        <button id="renderBtn" class="primary hidden" title="Render preview">Render preview</button>
+      </div>
+
+      <textarea id="jsonInput" spellcheck="false" placeholder="Paste the spatial JSON here…"></textarea>
+      <div class="note">Tip: Ctrl/Cmd+Enter to render. Supports <code>//</code> comments and trailing commas.</div>
+      <div id="errorBox" class="error hidden"></div>
+    </div>
+
+    <div class="meta" id="metaBox">
+      <h3>Metadata</h3>
+      <div class="kv" id="metaKv"></div>
+    </div>
+
+    <div class="legend">
+      <h3>Legend</h3>
+      <div class="items" id="legendItems"></div>
+    </div>
+    <div class="rooms" id="roomsBox">
+      <h3>Rooms</h3>
+      <div id="roomsRows"></div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="hud" id="hud"></div>
+    <div class="toolbar">
+      <button id="filterBtn" class="ghost" title="Filter graph">Filter</button>
+      <button id="reset" class="ghost" title="Reset zoom">Reset</button>
+    </div>
+    <div id="filterPanel" class="filter-panel" aria-label="Filter panel">
+      <h4>Filter</h4>
+      <div class="row"><label>Category</label><select id="catSel"><option value="">Any</option></select></div>
+      <div class="row"><label>Label contains</label><input id="labelInp" type="text" placeholder="substring"/></div>
+      <div class="row"><label>Area min</label><input id="areaMin" type="number" step="0.1"/></div>
+      <div class="row"><label>Area max</label><input id="areaMax" type="number" step="0.1"/></div>
+      <div class="row"><label>Dim min (mm)</label><input id="dimMin" type="number" step="1"/></div>
+      <div class="row"><label>Dim max (mm)</label><input id="dimMax" type="number" step="1"/></div>
+      <div class="row"><label>Has dimensions</label><select id="dimsSel"><option value="any">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+      <div class="modes">
+        <label><input type="radio" name="filterMode" value="fade" checked/> Fade</label>
+        <label><input type="radio" name="filterMode" value="erase"/> Erase</label>
+      </div>
+      <div class="actions">
+        <button id="filterClear">Clear</button>
+        <button id="filterApply">Apply</button>
+      </div>
+    </div>
+    <svg id="viz" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="Graph canvas">
+      <defs>
+        <filter id="drop" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="1.2" stdDeviation="2" flood-color="#000" flood-opacity=".45"/>
+        </filter>
+        <marker id="arrow" viewBox="0 0 10 10" refX="14" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"></path>
+        </marker>
+      </defs>
+      <g id="zoomLayer">
+        <g id="guides"></g>
+        <g id="links"></g>
+        <g id="nodes"></g>
+      </g>
+    </svg>
+    <div id="tooltip" class="tip hidden"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+(function(){
+  const EXT_SET = new Set(["EXT_STREET","EXT_DRIVEWAY","EXT_YARD","EXT_GARDEN"]);
+  const inputEl   = document.getElementById('jsonInput');
+  const errorBox  = document.getElementById('errorBox');
+  const normalMode = document.getElementById('normalMode');
+  const linearMode = document.getElementById('linearMode');
+  const rootSel   = document.getElementById('rootSel');
+  const autoBox   = document.getElementById('auto');
+  const renderBtn = document.getElementById('renderBtn');
+  const legendEl  = document.getElementById('legendItems');
+  const metaKv    = document.getElementById('metaKv');
+  const hud       = document.getElementById('hud');
+  
+  const filterBtn = document.getElementById('filterBtn');
+  const filterPanel = document.getElementById('filterPanel');
+  const catSel   = document.getElementById('catSel');
+  const labelInp = document.getElementById('labelInp');
+  const areaMin  = document.getElementById('areaMin');
+  const areaMax  = document.getElementById('areaMax');
+  const dimMin   = document.getElementById('dimMin');
+  const dimMax   = document.getElementById('dimMax');
+  const dimsSel  = document.getElementById('dimsSel');
+  const filterApply = document.getElementById('filterApply');
+  const filterClear = document.getElementById('filterClear');
+  const resetBtn  = document.getElementById('reset');
+  const svg = d3.select('#viz');
+  const zoomLayer = d3.select('#zoomLayer');
+  const guides = d3.select('#guides');
+  const linkLayer = d3.select('#links');
+  const nodeLayer = d3.select('#nodes');
+  const tip = document.getElementById('tooltip');
+
+  // Label wrapping configuration (linear mode)
+  const LABEL_WRAP_WIDTH_LINEAR = 120; // px; keep within inter-column spacing to avoid overlaps
+  const LABEL_LINE_HEIGHT_FACTOR = 1.25; // relative to computed font-size
+
+  let zoomBehavior = d3.zoom().scaleExtent([0.25, 4]).on('zoom', (ev)=> zoomLayer.attr('transform', ev.transform));
+  svg.call(zoomBehavior);
+
+  // Debounce for auto-render
+  let debounceTimer = null;
+  function debounceRender(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(tryRender, 700); }
+
+  inputEl.addEventListener('input', () => { if (autoBox.checked) debounceRender(); });
+  inputEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ tryRender(); }
+  });
+  autoBox.addEventListener('change', ()=> { renderBtn.classList.toggle('hidden', autoBox.checked); });
+  renderBtn.addEventListener('click', tryRender);
+  
+  // View mode button handlers
+  normalMode.addEventListener('click', ()=> {
+    normalMode.classList.add('active');
+    linearMode.classList.remove('active');
+    tryRender();
+  });
+  linearMode.addEventListener('click', ()=> {
+    linearMode.classList.add('active');
+    normalMode.classList.remove('active');
+    tryRender();
+  });
+  
+  rootSel.addEventListener('change', tryRender);
+
+  
+  filterBtn.addEventListener('click', ()=>{
+    const vis = filterPanel.style.display === 'block';
+    filterPanel.style.display = vis? 'none':'block';
+  });
+  resetBtn.addEventListener('click', ()=> {
+    const w = svg.node().clientWidth, h = svg.node().clientHeight;
+    const center = d3.zoomIdentity.translate(w/2, h/2).scale(1).translate(-w/2, -h/2);
+    svg.transition().duration(250).call(zoomBehavior.transform, d3.zoomIdentity);
+  });
+
+  // Apply/Clear filter triggers rerender
+  if(filterApply){
+    filterApply.addEventListener('click', ()=> { filterPanel.style.display='none'; tryRender(); });
+  }
+  if(filterClear){
+    filterClear.addEventListener('click', ()=>{
+      if(catSel) catSel.value=''; if(labelInp) labelInp.value=''; if(areaMin) areaMin.value=''; if(areaMax) areaMax.value=''; if(dimsSel) dimsSel.value='any';
+      tryRender();
+    });
+  }
+
+  // Example payload (valid JSON) for convenience
+  const example = {
+    "metadata": {
+      "street_address":"10 Gourlay Avenue","suburb":"Balgowlah","state":"NSW",
+      "total_area_m2":"35","total_rooms":"6","total_floors":"1",
+      "comments":"The plan shows a single floor with 6 spaces."
+    },
+    "spaces_list":[
+      {"space_id":"S1","space_category":"entry","space_label":"Entry","dimensions_mm":[2000],"area_m2":null,"access":["S2","EXT_STREET"],"comments":"The entry seems wide."},
+      {"space_id":"S2","space_category":"living room","space_label":"Living Room","dimensions_mm":null,"area_m2":"20","access":["S1","S3","S4"],"comments":"The living room is large and has a balcony."},
+      {"space_id":"S3","space_category":"kitchen","space_label":"Kitchen","dimensions_mm":[3000,2500],"area_m2":null,"access":["S2","S5"],"comments":"The kitchen does not appear to be in a normal location."},
+      {"space_id":"S4","space_category":"bedroom","space_label":"Bedroom","dimensions_mm":null,"area_m2":"15","access":["S2","S6"],"comments":"no comments"},
+      {"space_id":"S5","space_category":"laundry cupboard","space_label":"Laundry Cupboard","dimensions_mm":null,"area_m2":null,"access":["S3"],"comments":"the laundry cupboard seems to be doubled up as a walk-in robe."},
+      {"space_id":"S6","space_category":"balcony","space_label":"Balcony","dimensions_mm":null,"area_m2":null,"access":["S4","EXT_YARD"],"comments":"The balcony is large and has a view."}
+    ]
+  };
+  if(!inputEl.value.trim()) inputEl.value = JSON.stringify(example,null,2);
+
+  // Parsing with light sanitisation (comments + trailing commas)
+  function parseJSONLoose(txt){
+    try{
+      const cleaned = txt
+        .replace(/^\s*\/\/.*$/mg,'')                 // strip // comments
+        .replace(/\/\*[\s\S]*?\*\//g,'')             // strip /* */ comments
+        .replace(/,(\s*[}\]])/g,'$1');               // remove trailing commas
+      return JSON.parse(cleaned);
+    }catch(e){
+      throw new Error('JSON parse error: '+e.message);
+    }
+  }
+
+  // Stable hash → HSL colour
+  function hashColor(s, sat=65, light=55){
+    let h=0;
+    for(let i=0;i<s.length;i++){ h = (h*31 + s.charCodeAt(i))>>>0; }
+    return `hsl(${h%360} ${sat}% ${light}%)`;
+  }
+
+  function numberish(x){
+    if(x===null||x===undefined||x==="") return null;
+    const n=+x; return Number.isFinite(n)?n:null;
+  }
+  function dimsText(d){ if(!d||!Array.isArray(d)||d.length===0) return '—';
+    if(d.length===1) return `${d[0]} mm`;
+    if(d.length===2) return `${d[0]} × ${d[1]} mm`;
+    return d.join(' × ') + ' mm';
+  }
+
+  // SVG text wrapper: splits into tspans to fit within a max width
+  // Keeps left-aligned text and stacks lines downward from the original y
+  function wrapSvgText(selection, maxWidth, lineHeightFactor = LABEL_LINE_HEIGHT_FACTOR){
+    selection.each(function(){
+      const text = d3.select(this);
+      const raw = (text.text()||'').trim();
+      if(!raw){ return; }
+      const words = raw.split(/\s+/);
+      text.text(null);
+
+      const x = +text.attr('x') || 0;
+      const y = +text.attr('y') || 0;
+      const fontSizePx = parseFloat(getComputedStyle(this).fontSize||'12');
+      const lineHeightPx = Math.max(10, fontSizePx * lineHeightFactor);
+
+      let line = [];
+      let tspan = text.append('tspan').attr('x', x).attr('y', y).attr('dy', 0);
+      for(const w of words){
+        line.push(w);
+        tspan.text(line.join(' '));
+        if(tspan.node() && tspan.node().getComputedTextLength() > maxWidth){
+          line.pop();
+          tspan.text(line.join(' '));
+          line = [w];
+          tspan = text.append('tspan')
+            .attr('x', x)
+            .attr('y', y)
+            .attr('dy', lineHeightPx + 'px')
+            .text(w);
+        }
+      }
+    });
+  }
+
+  function buildGraph(data){
+    const nodes = new Map();      // id → node
+    const edgesSet = new Set();   // "a|b"
+    const edges = [];
+
+    const spaces = Array.isArray(data.spaces_list)? data.spaces_list : [];
+
+    // ensure nodes for every space
+    for(const s of spaces){
+      const id = String(s.space_id).trim();
+      if(!id) continue;
+      if(!nodes.has(id)){
+        nodes.set(id, {
+          id,
+          label: s.space_label??id,
+          category: (s.space_category??'').toLowerCase() || 'unspecified',
+          dims: Array.isArray(s.dimensions_mm)? s.dimensions_mm : null,
+          area: numberish(s.area_m2),
+          comments: s.comments??'',
+          isExterior: EXT_SET.has(id)
+        });
+      } else {
+        // merge if duplicated
+        const n=nodes.get(id);
+        n.label = s.space_label??n.label;
+        n.category = (s.space_category??n.category)||n.category;
+        n.dims = Array.isArray(s.dimensions_mm)? s.dimensions_mm : n.dims;
+        n.area = numberish(s.area_m2)??n.area;
+        n.comments = s.comments??n.comments;
+      }
+
+      // edges from access
+      const acc = Array.isArray(s.access)? s.access : [];
+      for(const t of acc){
+        const tid = String(t).trim();
+        if(!tid) continue;
+
+        // create node if referenced only (e.g., exterior)
+        if(!nodes.has(tid)){
+          nodes.set(tid,{
+            id: tid, label: tid, category: EXT_SET.has(tid)? 'exterior':'unspecified',
+            dims:null, area:null, comments: '', isExterior: EXT_SET.has(tid)
+          });
+        }
+        const [a,b] = [id, tid].sort();
+        const key = a+"|"+b;
+        if(a!==b && !edgesSet.has(key)){
+          edgesSet.add(key);
+          edges.push({source:id, target:tid});
+        }
+      }
+    }
+    // ensure exterior nodes carry flag & category
+    for(const id of nodes.keys()){
+      const n=nodes.get(id);
+      if(EXT_SET.has(id)){
+        n.category = 'exterior';
+        n.isExterior = true;
+      }
+    }
+    return {nodes:[...nodes.values()], links:edges};
+  }
+
+  function computeDepths(graph, chosenRoots){
+    const depth = new Map(); // id → level
+    const q = [];
+    const roots = graph.nodes.filter(n=>n.isExterior && (!chosenRoots || chosenRoots.size===0 || chosenRoots.has(n.id)));
+    for(const r of roots){ depth.set(r.id,0); q.push(r.id); }
+
+    const adj = new Map();
+    for(const n of graph.nodes) adj.set(n.id,[]);
+    for(const e of graph.links){ adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source); }
+
+    while(q.length){
+      const v=q.shift();
+      for(const u of adj.get(v)||[]){
+        if(!depth.has(u)){
+          depth.set(u, depth.get(v)+1);
+          q.push(u);
+        }
+      }
+    }
+    // fallback if no exterior was found
+    if(depth.size===0 && graph.nodes.length){
+      depth.set(graph.nodes[0].id,0);
+      computeFrom(graph.nodes[0].id);
+    }
+    function computeFrom(root){
+      const visited=new Set([root]), dq=[root];
+      while(dq.length){
+        const v=dq.shift();
+        for(const u of adj.get(v)||[]){
+          if(!visited.has(u)){
+            visited.add(u); depth.set(u, (depth.get(v)||0)+1);
+            dq.push(u);
+          }
+        }
+      }
+    }
+    return depth;
+  }
+
+  // Legend builder (by category in normal view, by depth in linear view)
+  function updateLegendNormal(nodes){
+    const group = d3.group(nodes, d=>d.category);
+    legendEl.innerHTML = '';
+    for(const [cat, arr] of group){
+      const sw = document.createElement('div');
+      sw.className='chip';
+      const c = hashColor(String(cat||'unspecified'));
+      sw.innerHTML = `<span class="sw" style="background:${c}"></span><span>${cat} (${arr.length})</span>`;
+      legendEl.appendChild(sw);
+    }
+  }
+  function updateLegendLinear(depthMap){
+    // show first few depth bins
+    const entries = [...new Set([...depthMap.values()].filter(v=>Number.isFinite(v)))].sort((a,b)=>a-b).slice(0,12);
+    legendEl.innerHTML = '';
+    for(const d of entries){
+      const hue = (220 + d*40) % 360;
+      const c = `hsl(${hue} 70% ${Math.max(30, 70 - d*5)}%)`;
+      const sw = document.createElement('div');
+      sw.className='chip';
+      sw.innerHTML = `<span class="sw" style="background:${c};border-color:${c}"></span><span>Depth ${d}</span>`;
+      legendEl.appendChild(sw);
+    }
+  }
+
+  function updateMeta(meta, nodes, links){
+    metaKv.innerHTML='';
+    const kv = [
+      ['Address', [meta.street_address, meta.suburb, meta.state].filter(Boolean).join(', ') || '—'],
+      ['Total area (m²)', meta.total_area_m2 ?? '—'],
+      ['Rooms', meta.total_rooms ?? '—'],
+      ['Floors', meta.total_floors ?? '—'],
+      ['Nodes', nodes.length],
+      ['Edges', links.length],
+      ['Comments', meta.comments ?? '—']
+    ];
+    for(const [k,v] of kv){
+      const kdiv=document.createElement('div');kdiv.textContent=k;
+      const vdiv=document.createElement('div');vdiv.textContent=String(v);
+      metaKv.appendChild(kdiv); metaKv.appendChild(vdiv);
+    }
+
+    // Rooms list with simple statistics
+    const roomsRows = document.getElementById('roomsRows');
+    if(roomsRows){
+      roomsRows.innerHTML = '';
+      const header = document.createElement('div');
+      header.className = 'header';
+      header.innerHTML = `<div>Category</div><div>Count</div><div>Dimensions</div><div>Avg area</div>`;
+      roomsRows.appendChild(header);
+
+      const byCat = d3.rollup(nodes, arr => ({
+        count: arr.length,
+        dims: arr.map(n=> (n.dims && n.dims.length? n.dims.join('×'): '—')).slice(0,3).join(', '),
+        avgArea: d3.mean(arr.map(n=> Number.isFinite(n.area)? n.area : null)) || null
+      }), n => n.category);
+      for(const [cat, stats] of byCat){
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `<div>${cat}</div><div>${stats.count}</div><div>${stats.dims}</div><div>${stats.avgArea? stats.avgArea.toFixed(1): '—'}</div>`;
+        roomsRows.appendChild(row);
+      }
+    }
+  }
+
+  // fitToScreen removed per user request
+  function fitToScreen(){ return; }
+    // Use only nodes + links for fitting; ignore guides
+    function unionBBox(a,b){
+      if(!a) return b; if(!b) return a;
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      const maxX = Math.max(a.x + a.width, b.x + b.width);
+      const maxY = Math.max(a.y + a.height, b.y + b.height);
+      return {x, y, width: maxX-x, height: maxY-y};
+    }
+  
+
+  function nodeFill(n, mode, depthMap){
+    if(mode==='linear'){
+      const d = depthMap.get(n.id) ?? 0;
+      const hue = (220 + d*40) % 360;
+      const l = Math.max(30, 70 - d*5);
+      return `hsl(${hue} 70% ${l}%)`;
+    } else {
+      return hashColor(n.category||'unspecified', 65, 55);
+    }
+  }
+
+  function tipShow(x,y, n){
+    tip.classList.remove('hidden');
+    tip.style.left = x+'px'; tip.style.top = y+'px';
+    const dims = dimsText(n.dims);
+    const area = (n.area!=null && n.area!=="")? `${n.area} m²` : '—';
+    tip.innerHTML = `
+      <h4>${n.label} <span class="pill">${n.id}</span></h4>
+      <div class="sub">${n.category}${n.isExterior? ' • exterior':' '}</div>
+      <div class="kv">
+        <div>Dimensions</div><div>${dims}</div>
+        <div>Area</div><div>${area}</div>
+        <div>Comments</div><div class="muted">${n.comments||'—'}</div>
+      </div>
+    `;
+  }
+  function tipHide(){ tip.classList.add('hidden'); }
+
+  function draw(graph, mode){
+    // Populate category options
+    const cats = new Set((graph.nodes||[]).map(n=> (n.space_category||n.category||'unspecified')));
+    if(catSel){
+      const existing = new Set([...catSel.options].map(o=>o.value));
+      for(const c of cats){
+        if(!existing.has(String(c))){
+          const opt = document.createElement('option'); opt.value=String(c); opt.textContent=String(c); catSel.appendChild(opt);
+        }
+      }
+    }
+    let nodes = graph.nodes.map(d=>Object.assign({}, d)); // copy for simulation
+    let links = graph.links.map(d=>Object.assign({}, d));
+
+    // Apply filter
+    const modeSel = (document.querySelector('input[name="filterMode"]:checked')||{}).value || 'fade';
+    const criteria = {
+      cat: (catSel && catSel.value)||'',
+      labelSub: (labelInp && labelInp.value||'').toLowerCase(),
+      minA: areaMin && areaMin.value!==''? +areaMin.value : null,
+      maxA: areaMax && areaMax.value!==''? +areaMax.value : null,
+      minD: dimMin && dimMin.value!==''? +dimMin.value : null,
+      maxD: dimMax && dimMax.value!==''? +dimMax.value : null,
+      dims: (dimsSel && dimsSel.value)||'any'
+    };
+    function keepNode(n){
+      const catOk = !criteria.cat || (n.category||n.space_category||'')===criteria.cat;
+      const lblOk = !criteria.labelSub || String(n.label||n.id||'').toLowerCase().includes(criteria.labelSub);
+      const a = Number.isFinite(n.area)? n.area : null;
+      const aOk = (criteria.minA==null || (a!=null && a>=criteria.minA)) && (criteria.maxA==null || (a!=null && a<=criteria.maxA));
+      const dimLargest = (n.dims && n.dims.length)? Math.max(...n.dims.map(Number)) : null;
+      const dOk = (criteria.minD==null || (dimLargest!=null && dimLargest>=criteria.minD)) && (criteria.maxD==null || (dimLargest!=null && dimLargest<=criteria.maxD));
+      const dimsPresenceOk = criteria.dims==='any' || (criteria.dims==='yes' ? (n.dims && n.dims.length>0) : !(n.dims && n.dims.length>0));
+      return catOk && lblOk && aOk && dOk && dimsPresenceOk;
+    }
+    const nodeKeep = new Map(nodes.map(n=> [n.id, keepNode(n)]));
+    if(modeSel==='erase'){
+      nodes = nodes.filter(n=> nodeKeep.get(n.id));
+      const keepIds = new Set(nodes.map(n=> n.id));
+      links = links.filter(l=> keepIds.has(l.source) && keepIds.has(l.target));
+    }
+    const idToNode = new Map(nodes.map(n=>[n.id,n]));
+    for(const l of links){
+      if(l && l.source) l.source = idToNode.get(typeof l.source==='object'? l.source.id : l.source) || idToNode.get(l.source) || l.source;
+      if(l && l.target) l.target = idToNode.get(typeof l.target==='object'? l.target.id : l.target) || idToNode.get(l.target) || l.target;
+    }
+
+    // Build adjacency usable in both modes
+    const adjAll = new Map();
+    for(const n of nodes) adjAll.set(n.id, new Set());
+    for(const e of links){
+      const sid = typeof e.source==='object'? e.source.id : e.source;
+      const tid = typeof e.target==='object'? e.target.id : e.target;
+      adjAll.get(sid)?.add(tid); adjAll.get(tid)?.add(sid);
+    }
+
+    // Exterior roots selector
+    rootSel.innerHTML='';
+    const exts = nodes.filter(n=>n.isExterior);
+    for(const e of exts){
+      const opt=document.createElement('option'); opt.value=e.id; opt.textContent=e.id; opt.selected=true;
+      rootSel.appendChild(opt);
+    }
+    const chosenRoots = new Set([...rootSel.selectedOptions].map(o=>o.value));
+
+    // Depths
+    const depthMap = computeDepths(graph, chosenRoots);
+
+    // Update legend + meta + HUD
+    if(mode==='linear'){ updateLegendLinear(depthMap); }
+    else{ updateLegendNormal(nodes); }
+
+    updateMeta(graph.metadata||{}, nodes, links);
+    hud.innerHTML = `<b>Mode:</b> ${mode}  ·  <b>Nodes:</b> ${nodes.length}  ·  <b>Edges:</b> ${links.length}`;
+
+    // Clear guides, links, nodes
+    guides.selectAll('*').remove();
+    linkLayer.selectAll('*').remove();
+    nodeLayer.selectAll('*').remove();
+
+    // Level guides for linear mode and compute lattice positions
+    let latticeY = null, latticeXpx = null, colIndexOf = null;
+    if(mode==='linear'){
+      const levels = d3.extent([...depthMap.values()].filter(Number.isFinite));
+      const minL = Math.max(0, levels[0]??0), maxL = levels[1]??0;
+      const H = svg.node().clientHeight || 800;
+      const W = svg.node().clientWidth || 1200;
+      const GRID = 60;              // base grid size
+      const MIN_UNITS = 2;          // min 2 grids apart
+      const V_GAP = GRID*MIN_UNITS; // vertical distance between levels
+      const originX = W/2;          // center grid
+      latticeY = (lvl)=> lvl*V_GAP + 80;
+
+      const adj = adjAll;
+
+      const byLevel = d3.group(nodes, d=> depthMap.get(d.id)||0);
+      const colIdx = new Map(); // id -> integer column index
+
+      function isFree(col, used){
+        for(const u of used){ if(Math.abs(col - u) < MIN_UNITS) return false; }
+        return true;
+      }
+      function nearestFree(desired, used){
+        if(isFree(desired, used)) return desired;
+        for(let step=1; step<200; step++){
+          const left = desired - step, right = desired + step;
+          if(isFree(left, used)) return left;
+          if(isFree(right, used)) return right;
+        }
+        return desired; // fallback
+      }
+
+      // Level 0: distribute exterior roots and any others
+      const roots = byLevel.get(0) || [];
+      const used0 = [];
+      let start0 = -Math.floor(((roots.length-1) * MIN_UNITS)/2)*1; // symmetric
+      let idx = start0;
+      for(const n of roots){
+        colIdx.set(n.id, idx);
+        used0.push(idx);
+        idx += MIN_UNITS;
+      }
+
+      // Subsequent levels
+      for(let lvl=1; lvl<=maxL; lvl++){
+        const arr = byLevel.get(lvl) || [];
+        const used = [];
+        // Stable order: by id to keep deterministic
+        arr.sort((a,b)=> (a.id<b.id?-1:1));
+        for(const n of arr){
+          // parents are neighbors at previous level
+          const parents = [...(adj.get(n.id)||[])].filter(pid => (depthMap.get(pid)||0) === lvl-1);
+          let desired = 0;
+          if(parents.length === 1){ desired = colIdx.get(parents[0]) ?? 0; }
+          else if(parents.length > 1){
+            const avg = parents.reduce((s,p)=> s + (colIdx.get(p)??0), 0)/parents.length;
+            desired = Math.round(avg);
+          } else {
+            desired = 0;
+          }
+          const col = nearestFree(desired, used);
+          colIdx.set(n.id, col); used.push(col);
+        }
+      }
+
+      // Column index to pixel converter
+      function colToX(col){ return originX + col*GRID; }
+      latticeXpx = new Map([...colIdx.entries()].map(([id,col]) => [id, colToX(col)]));
+      colIndexOf = (id)=> colIdx.get(id) ?? 0;
+
+      for(let l=minL; l<=maxL; l++){
+        guides.append('line')
+          .attr('class','level-guide')
+          .attr('x1', 0).attr('x2', 5000)
+          .attr('y1', latticeY(l))
+          .attr('y2', latticeY(l));
+      }
+    }
+
+    // Calculate connection counts for collision force (by id)
+    const connectionCounts = new Map();
+    for(const link of links) {
+      const sid = typeof link.source==='object'? link.source.id : link.source;
+      const tid = typeof link.target==='object'? link.target.id : link.target;
+      connectionCounts.set(sid, (connectionCounts.get(sid) || 0) + 1);
+      connectionCounts.set(tid, (connectionCounts.get(tid) || 0) + 1);
+    }
+
+    // Simulation (normal mode only). Linear mode uses deterministic lattice positions
+    let sim = null;
+    if(mode!== 'linear'){
+      sim = d3.forceSimulation(nodes)
+        .force('charge', d3.forceManyBody().strength(-200))
+        .force('link', d3.forceLink(links).id(d=>d.id).distance(80).strength(0.8))
+        .force('collide', d3.forceCollide().radius(d=> nodeRadius(d, connectionCounts)+6).iterations(2))
+        .force('center', d3.forceCenter(600, 400));
+    }
+
+    function hash(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*33 + s.charCodeAt(i))>>>0; } return h; }
+
+    // Links (always straight lines)
+    const link = linkLayer.selectAll('line').data(links).enter().append('line')
+      .attr('class', d => d.backbone? 'link backbone':'link faint')
+      .attr('stroke-width', 1.4)
+      .attr('marker-end', null); // undirected edges; switch to '#arrow' if desired
+
+    // Nodes
+    const g = nodeLayer.selectAll('g.node').data(nodes, d=>d.id).enter().append('g').attr('class','node');
+    if(mode!=='linear') g.call(drag(sim));
+
+    // Use the connection counts calculated earlier
+
+    // Create shapes
+    const shapes = g.each(function(d) {
+      const group = d3.select(this);
+      const radius = nodeRadius(d, connectionCounts);
+      const fillColor = nodeFill(d, mode, depthMap);
+      const hasDimensions = d.dims && Array.isArray(d.dims) && d.dims.length > 0;
+      
+      if(d.isExterior) {
+        // Exterior roots as dotted circles (no fill)
+        group.append('circle')
+          .attr('r', radius)
+          .attr('fill', 'none')
+          .attr('stroke', fillColor)
+          .attr('stroke-dasharray', '4 4')
+          .attr('stroke-width', (radius*0.42))
+          .attr('stroke-opacity', 0.9)
+          .classed('node-shape', true);
+      } else {
+        // Circle for interior nodes
+        group.append('circle')
+          .attr('r', radius)
+          .attr('fill', hasDimensions ? fillColor : 'none')
+          .attr('stroke', fillColor)
+          .attr('stroke-width', hasDimensions ? (radius*0.14) : (radius*0.42))
+          .attr('stroke-opacity', 0.9)
+          .classed('node-shape', true);
+      }
+      if(modeSel==='fade' && !nodeKeep.get(d.id)){
+        group.attr('opacity', 0.15);
+      }
+    });
+
+    // Offset labels to avoid covering vertical edges; for linear mode, shift further right and slightly down
+    // Move text 1 text height lower by increasing the y offset by the font size
+    const labels = g.append('text')
+      .attr('x', d=> nodeRadius(d, connectionCounts) + (mode==='linear' ? 18 : 10))
+      .attr('y', d=> {
+        const fontSize = d.isExterior ? 11 : 12;
+        return (mode === 'linear' ? 6 : 4) + fontSize;
+      })
+      .style('font-size', d=> d.isExterior ? '11px' : '12px')
+      .text(d=> d.label || d.id);
+
+    // Nuanced placement for linear-mode labels: try right, then left, then below/above centered
+    if(mode === 'linear'){
+      const SIDE_GAP = 10;
+      const VERT_GAP = 8;
+      function nearestBoundsOnLevel(node){
+        const x = latticeXpx.get(node.id);
+        const lvl = depthMap.get(node.id) || 0;
+        let rightEdge = Infinity, leftEdge = -Infinity;
+        for(const other of nodes){
+          if(other.id===node.id) continue;
+          if((depthMap.get(other.id)||0)!==lvl) continue;
+          const ox = latticeXpx.get(other.id);
+          const or = nodeRadius(other, connectionCounts);
+          if(ox > x){ rightEdge = Math.min(rightEdge, ox - or); }
+          if(ox < x){ leftEdge  = Math.max(leftEdge,  ox + or); }
+        }
+        return {leftEdge, rightEdge};
+      }
+      function applyPlacement(textSel, node){
+        const x0 = latticeXpx.get(node.id);
+        const r0 = nodeRadius(node, connectionCounts);
+        const fontSize = node.isExterior ? 11 : 12;
+        const baseRightX = r0 + 18; // default right offset used above
+        const {leftEdge, rightEdge} = nearestBoundsOnLevel(node);
+
+        const rightAvail = Number.isFinite(rightEdge)? Math.max(0, (rightEdge - SIDE_GAP) - (x0 + baseRightX)) : LABEL_WRAP_WIDTH_LINEAR;
+        const leftAvail  = Number.isFinite(leftEdge) ? Math.max(0, (x0 - (r0 + 18)) - (leftEdge + SIDE_GAP)) : LABEL_WRAP_WIDTH_LINEAR;
+
+        const el = d3.select(textSel);
+        // Option 1: Right side if space is decent
+        if(rightAvail >= 80){
+          el.attr('x', baseRightX).attr('y', fontSize + 6).attr('text-anchor','start');
+          el.text(node.label || node.id);
+          el.call(wrapSvgText, rightAvail);
+          return;
+        }
+        // Option 2: Left side if better than right
+        if(leftAvail >= rightAvail && leftAvail >= 80){
+          el.attr('x', -(r0 + 18)).attr('y', fontSize + 6).attr('text-anchor','end');
+          el.text(node.label || node.id);
+          el.call(wrapSvgText, leftAvail);
+          return;
+        }
+        // Option 3: Below centered
+        const belowY = r0 + fontSize + VERT_GAP;
+        const centerAvail = Math.max(80, Math.min(LABEL_WRAP_WIDTH_LINEAR, leftAvail + rightAvail - 2*SIDE_GAP));
+        el.attr('x', 0).attr('y', belowY).attr('text-anchor','middle');
+        el.text(node.label || node.id);
+        el.call(wrapSvgText, centerAvail);
+      }
+      labels.each(function(d){ applyPlacement(this, d); });
+    }
+
+    // Position nodes deterministically in linear mode
+    if(mode==='linear'){
+      for(const n of nodes){
+        const lvl = depthMap.get(n.id)||0;
+        n.x = latticeXpx.get(n.id);
+        n.y = latticeY(lvl);
+      }
+      // Ensure link endpoints use resolved node objects
+      link
+        .attr('x1', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const a=anchorPoint(s,t); return isFinite(a.x)?a.x:0; })
+        .attr('y1', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const a=anchorPoint(s,t); return isFinite(a.y)?a.y:0; })
+        .attr('x2', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const b=anchorPoint(t,s); return isFinite(b.x)?b.x:0; })
+        .attr('y2', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const b=anchorPoint(t,s); return isFinite(b.y)?b.y:0; });
+      g.attr('transform', d=> `translate(${d.x},${d.y})`);
+      // No automatic fit
+    }
+
+    // Add hover events to the node shapes
+    g.selectAll('.node-shape').on('mouseenter', function(ev, d){
+      // Get SVG coordinates instead of screen coordinates
+      const svgRect = svg.node().getBoundingClientRect();
+      const nodeRect = this.getBoundingClientRect();
+      const x = nodeRect.left + nodeRect.width/2 - svgRect.left;
+      const y = nodeRect.top - svgRect.top;
+      tipShow(x, y, d);
+      const current = parseFloat(d3.select(this).attr('stroke-width')) || 1.4;
+      d3.select(this).attr('stroke-width', Math.min(current + 1.4, current*1.35));
+    }).on('mouseleave', function(ev, d){
+      tipHide();
+      const hasDimensions = d.dims && Array.isArray(d.dims) && d.dims.length > 0;
+      d3.select(this).attr('stroke-width', hasDimensions ? '1.4px' : '5px');
+    });
+
+    function anchorPoint(n, other){
+      const cx = n.x, cy = n.y;
+      const vx = other.x - cx, vy = other.y - cy;
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx/len, uy = vy/len;
+      const r = nodeRadius(n, connectionCounts);
+      if(n.isExterior){
+        // exterior rendered as dotted circle; use perimeter like circle
+        return {x: cx + ux*r, y: cy + uy*r};
+      }
+      return {x: cx + ux*r, y: cy + uy*r};
+    }
+
+    if(mode!=='linear' && sim){
+      sim.on('tick', ()=>{
+        link
+          .attr('x1', d=> anchorPoint(d.source, d.target).x)
+          .attr('y1', d=> anchorPoint(d.source, d.target).y)
+          .attr('x2', d=> anchorPoint(d.target, d.source).x)
+          .attr('y2', d=> anchorPoint(d.target, d.source).y);
+
+        g.attr('transform', d=> `translate(${d.x},${d.y})`);
+      });
+      sim.on('end', ()=> fitToScreen(60, true));
+    }
+
+
+    // Drag behaviour
+    function drag(sim){
+      function dragstarted(event, d){
+        if(!event.active) sim.alphaTarget(0.2).restart();
+        d.fx = d.x; d.fy = d.y;
+      }
+      function dragged(event, d){ d.fx = event.x; d.fy = event.y; }
+      function dragended(event, d){
+        if(!event.active) sim.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      }
+      return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
+    }
+
+    function nodeRadius(n, connectionCounts){
+      // Base radius from area
+      let baseRadius;
+      if(Number.isFinite(n.area) && n.area>0){
+        baseRadius = 6 + Math.min(26, Math.sqrt(n.area)); // gentle scaling
+      } else {
+        baseRadius = n.isExterior? 12 : 10;
+      }
+      
+      // Scale by connection count
+      const connections = connectionCounts.get(n.id) || 0;
+      const connectionMultiplier = 1 + (connections * 0.30); // stronger scaling
+      
+      return baseRadius * connectionMultiplier;
+    }
+  }
+
+  function tryRender(){
+    errorBox.classList.add('hidden'); errorBox.textContent='';
+    let data;
+    const t0 = performance.now();
+    try{
+      data = parseJSONLoose(inputEl.value);
+    }catch(e){
+      errorBox.textContent = e.message;
+      errorBox.classList.remove('hidden');
+      return;
+    }
+    const graph = buildGraph(data);
+    graph.metadata = data.metadata || {};
+    const n = graph.nodes.length, m = graph.links.length;
+
+    // Switch to manual render for large graphs
+    const large = (n>150 || m>400);
+    if(large && autoBox.checked){
+      autoBox.checked = false;
+      renderBtn.classList.remove('hidden');
+    }
+
+    const currentMode = normalMode.classList.contains('active') ? 'normal' : 'linear';
+    draw(graph, currentMode);
+
+    const dt = Math.max(1, Math.round(performance.now()-t0));
+    hud.innerHTML += `  ·  <b>Parse:</b> ${dt} ms`;
+  }
+
+  // Initial render
+  tryRender();
+})();
+</script>
+</body>
+</html>
