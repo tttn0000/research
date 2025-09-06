@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polyomino Notation Preview — Scroll, Zoom, Highlights</title>
+<style>
+  :root{
+    --bg:#f7f9fc; --panel:#ffffff; --panel-2:#f1f4f8;
+    --ink:#0b1526; --ink-2:#55637a; --accent:#1c6ef2;
+    --ok:#059669; --warn:#b45309; --err:#e11d48;
+    --grid:#e3e8f0; --grid-strong:#cbd5e1; --bbox:#E74099;
+    --sel:#c68400; --hover:#2563eb; --contact:#fb923c;
+    --badge:#eef2ff; --badge-border:#d6daf0;
+  }
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  *{box-sizing:border-box}
+  #app{
+    height:100%; display:grid; min-width:0; min-height:0;
+    grid-template-columns: 340px 1fr 360px;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "header header header"
+      "left   main   right"
+      "footer footer footer";
+  }
+  header{grid-area:header;display:flex;align-items:center;gap:12px;
+    padding:10px 14px;background:var(--panel-2);border-bottom:1px solid #e5eaf1}
+  header h1{margin:0;font-size:16px;font-weight:700}
+  #left{grid-area:left;background:var(--panel);border-right:1px solid #e5eaf1;overflow:auto;min-width:0}
+  #right{grid-area:right;background:var(--panel);border-left:1px solid #e5eaf1;overflow:auto;min-width:0}
+  #main{grid-area:main;position:relative;min-width:0;min-height:0;overflow:hidden;background:#f8fbff}
+  #canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  footer{grid-area:footer;padding:8px 12px;background:var(--panel-2);
+    border-top:1px solid #e5eaf1;color:var(--ink-2);display:flex;justify-content:space-between;gap:12px;white-space:nowrap;overflow:auto}
+
+  .section{padding:12px 14px;border-bottom:1px solid #e5eaf1}
+  .section h2{margin:0 0 8px;font-size:13px;color:#0b1526;font-weight:700}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .col{display:flex;flex-direction:column;gap:6px}
+  .muted{color:var(--ink-2)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  label{font-size:12px;color:var(--ink-2)}
+  input[type="text"],input[type="number"],select,textarea{
+    background:#fff;border:1px solid #d7dde7;color:var(--ink);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;min-width:0
+  }
+  textarea{width:100%;min-height:160px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+  input[type="number"]{width:92px}
+  button{background:#f3f6fb;border:1px solid #d0d7e2;color:var(--ink);border-radius:8px;padding:8px 10px;font-size:13px;cursor:pointer;user-select:none;transition:.12s;white-space:nowrap}
+  button:hover{border-color:#b8c2d3;background:#e9eef7}
+  .ghost{background:#fff;border-color:#d0d7e2}
+  .primary{background:#1c6ef2;color:#fff;border-color:#1658be}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;border:1px solid #d0d7e2;border-radius:999px;background:#f3f6fb}
+  .status{padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#fff}
+  .ok{border-color:#bbf7d0;background:#f0fdf4}
+  .err{border-color:#fecdd3;background:#fff1f2}
+  .badge{display:inline-block;padding:2px 6px;border:1px solid var(--badge-border);background:var(--badge);border-radius:6px}
+
+  /* Canvas HUD */
+  .toolbar{
+    position:absolute; left:8px; top:8px; right:8px; z-index:3;
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    background:#ffffffd6; border:1px solid #e2e8f0; border-radius:10px; padding:8px; backdrop-filter:blur(6px)
+  }
+
+  /* Scrollbars + zoom controls overlay */
+  .scrollbarX{ position:absolute; left:8px; right:36px; bottom:8px; z-index:3; display:flex; gap:8px; align-items:center; }
+  .scrollbarY{ position:absolute; right:8px; top:36px; bottom:40px; z-index:3; display:flex; align-items:center; writing-mode:bt-lr; transform:rotate(180deg); }
+  .scrollbarX input[type="range"], .scrollbarY input[type="range"]{ width:100%; }
+  .zoomWrap{ position:absolute; right:8px; bottom:8px; z-index:3; display:flex; align-items:center; gap:6px; background:#ffffffd6; border:1px solid #e2e8f0; border-radius:10px; padding:6px 8px; }
+  .zoomWrap input[type="range"]{ width:140px; }
+
+  /* Subtle scrollbars: fade unless hovered/focused */
+  .scrollbarX, .scrollbarY{ opacity:.2; transition:opacity .15s ease; }
+  .scrollbarX:hover, .scrollbarY:hover, .scrollbarX:focus-within, .scrollbarY:focus-within{ opacity:1; }
+
+  /* Right thumbnails */
+  .thumb-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(148px,1fr));gap:10px}
+  .thumb{border:1px solid #e5eaf1;border-radius:10px;background:#fff;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+  .thumb:hover{outline:2px solid #cbd5e1}
+  .thumb canvas{width:100%;height:auto;aspect-ratio:256/110;background:#f8fbff;border:1px solid #e5eaf1;border-radius:8px}
+
+  /* Help tooltip */
+  .help-wrap{position:relative;display:inline-block}
+  .help-tip{border:1px solid #d0d7e2;background:#fff;border-radius:8px;padding:8px;position:absolute;left:0;bottom:28px;min-width:260px;max-width:340px;box-shadow:0 8px 20px rgba(11,21,38,0.12);display:none;z-index:10}
+  .help-wrap:hover .help-tip{display:block}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Polyomino Notation Preview</h1>
+    <div class="muted">Cells 1-based; gridlines 0-based; origin at bottom-left. Modes: Atomic • Composite • Instances.</div>
+  </header>
+
+  <aside id="left">
+    <div class="section">
+      <h2>Notation</h2>
+      <textarea id="notation" spellcheck="false" placeholder="Paste Library of Atomics, Composites (join or coords) and Instances…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <label>Mode</label>
+        <select id="modeSel">
+          <option value="atomic">Atomic Objects</option>
+          <option value="composite">Composite Objects</option>
+          <option value="instances" selected>Instances</option>
+        </select>
+        <label>Composite</label>
+        <select id="compositeSel"><option value="">—</option></select>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div class="pill"><input id="boldGrid" type="checkbox" checked style="margin-right:6px">Bold every 5</div>
+        <div class="pill"><input id="showAxes" type="checkbox" checked style="margin-right:6px">Show axes</div>
+        <div class="pill"><input id="showAnchors" type="checkbox" checked style="margin-right:6px">Anchor labels</div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="parseBtn" class="primary">Parse</button>
+        <button id="fitBtn" class="ghost">Fit</button>
+        <button id="demoBtn" class="ghost">Load example</button>
+        <div class="help-wrap">
+          <button class="ghost">Help</button>
+          <div class="help-tip mono">
+            - Atomic: &lt; R1 | 1,1 ; 3,4 &gt;<br>
+            - Composite (join): &lt; C1 | &lt; ^ R1 | ( 2,3 ; 3,3 )Y &gt; &lt; R2 | ( 1,1 ; 2,1 )-Y &gt; ; … &gt;<br>
+            - Composite (coords): &lt; C1 | { 1,1 ; 4,3 } { 2,4 ; 3,8 } &gt;<br>
+            - Instance: &lt; I1 @ C1 | { Ref - | Rot - } { y,x } &gt;<br>
+            - ^ rotates atomic 90°. Edges must be opposite; run-lengths equal.<br>
+            - Thumbnail clicks highlight atomics in current view; they do not switch modes.<br>
+            - Click canvas: shows absolute cell (y,x); Ctrl/Cmd+wheel zooms; Shift+wheel scrolls X.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Summary</h2>
+      <div class="mono" id="summaryMono">—</div>
+    </div>
+
+    <div class="section">
+      <h2>Issues</h2>
+      <div id="issues" class="status ok">No issues</div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <canvas id="canvas"></canvas>
+
+    <div class="toolbar">
+      <span class="pill">Atomics <span id="countA" class="mono">0</span></span>
+      <span class="pill">Composites <span id="countC" class="mono">0</span></span>
+      <span class="pill">Instances <span id="countI" class="mono">0</span></span>
+      <span class="pill">Highlight <span id="hiBadge" class="mono">—</span></span>
+      <span class="pill">Click <span id="clickBadge" class="mono">—</span></span>
+    </div>
+
+    <div class="scrollbarX">
+      <span class="muted mono">X</span>
+      <input id="scrollX" type="range" min="0" max="0" step="1" value="0">
+    </div>
+    <div class="scrollbarY">
+      <input id="scrollY" type="range" min="0" max="0" step="1" value="0" style="width:100%;height:100%">
+      <span class="muted mono" style="transform:rotate(180deg);">Y</span>
+    </div>
+    <div class="zoomWrap">
+      <span class="muted mono">Zoom</span>
+      <input id="zoom" type="range" min="16" max="96" step="2" value="44">
+    </div>
+  </main>
+
+  <aside id="right">
+    <div class="section">
+      <h2>Atomic Library</h2>
+      <div id="thumbs" class="thumb-grid"></div>
+    </div>
+  </aside>
+
+  <footer>
+    <div>- Borders drawn for all objects. Composites show dashed bboxes and centre labels. Instances show their composite bbox and instance ID.</div>
+    <div class="muted">Cells are 1-based; gridlines 0-based; origin at bottom-left.</div>
+  </footer>
+</div>
+
+<script>
+'use strict';
+
+/* ================= Grid (single source of truth, origin bottom-left) ================= */
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', {alpha:false});
+const grid = {
+  g: 44,            // pixels per cell
+  offX: 0,          // scroll in gridlines (non-negative)
+  offY: 0,
+  get w(){ return canvas.width  / (window.devicePixelRatio||1); },
+  get h(){ return canvas.height / (window.devicePixelRatio||1); },
+
+  // gridlines → pixels (note: world gy increases upward; Y axis inverted at draw time)
+  lineX(gx){ return (gx - this.offX) * this.g; },
+  lineY(gy){ return this.h - (gy - this.offY) * this.g; },
+
+  // cells → pixels (top-left of a cell)
+  cellLeft(x){ return this.lineX(x-1); },
+  cellTop(y){  return this.lineY(y); },
+
+  // pixels → world cells (absolute, 1-based)
+  cellX(px){ return Math.floor(px / this.g) + 1 + this.offX; },
+  cellY(py){ return Math.floor((this.h - py) / this.g) + 1 + this.offY; }
+};
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+/* ================= Utilities ================= */
+const css = (v)=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc = (s)=>String(s??'').replace(/[<>&'"]/g,(c)=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+const rngHue=(()=>{let h=Math.random()*360; return ()=>{ h=(h+137.508)%360; return h; };})();
+const colorMap=new Map(); function colorFor(k){ if(!colorMap.has(k)) colorMap.set(k, `hsl(${rngHue()},68%,62%)`); return colorMap.get(k); }
+function strokeForFill(hsl){ const m=/hsl\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(hsl); if(!m) return '#b6c2d0'; const h=+m[1],s=+m[2],l=Math.max(20,+m[3]-12); return `hsl(${h}, ${s}%, ${l}%)`; }
+
+/* ================= Parsing helpers ================= */
+function extractTopBlocks(text){
+  const out=[]; let i=0,depth=0,start=-1;
+  while(i<text.length){
+    const ch=text[i];
+    if(ch==='<' ){ if(depth===0) start=i; depth++; }
+    else if(ch==='>'){ depth--; if(depth===0 && start>=0){ out.push(text.slice(start,i+1)); start=-1; } }
+    i++;
+  }
+  return out;
+}
+function classifyBlock(s){
+  const hasAt = /<\s*([\w-]+)\s*@\s*([\w-]+)/.test(s);
+  if(hasAt) return 'instance';
+  const inner = s.replace(/^\s*<|>\s*$/g,'');
+  const pipe = inner.indexOf('|'); if(pipe<0) return 'unknown';
+  const rhs = inner.slice(pipe+1);
+  if(rhs.includes('{')) return 'composite-coords';
+  if(rhs.includes('<')) return 'composite-join';
+  return 'atomic';
+}
+
+/* Atomic */
+function parseAtomic(block){
+  const m = block.match(/^<\s*([\w-]+)\s*\|\s*(-?\d+)\s*,\s*(-?\d+)\s*;\s*(-?\d+)\s*,\s*(-?\d+)\s*>\s*$/s);
+  if(!m) return {ok:false, err:`Cannot parse atomic: ${esc(block)}`};
+  const id=m[1], y1=+m[2], x1=+m[3], y2=+m[4], x2=+m[5];
+  const H=Math.abs(y2-y1)+1, W=Math.abs(x2-x1)+1;
+  return {ok:true, id, H, W};
+}
+
+/* Composite (coordinate form) */
+function parseCompositeCoords(block){
+  const idm = block.match(/^<\s*([\w-]+)\s*\|([\s\S]+)>\s*$/);
+  if(!idm) return {ok:false, err:`Cannot parse composite coords header: ${esc(block)}`};
+  const id = idm[1], rhs = idm[2];
+  const parts=[]; const re=/\{\s*(-?\d+)\s*,\s*(-?\d+)\s*;\s*(-?\d+)\s*,\s*(-?\d+)\s*\}/g;
+  let m; while((m=re.exec(rhs))!==null){
+    const y1=+m[1], x1=+m[2], y2=+m[3], x2=+m[4];
+    const ny1=Math.min(y1,y2), nx1=Math.min(x1,x2);
+    const ny2=Math.max(y1,y2), nx2=Math.max(x1,x2);
+    parts.push({y1:ny1,x1:nx1,y2:ny2,x2:nx2});
+  }
+  if(!parts.length) return {ok:false, err:`Composite coords has no parts: ${esc(block)}`};
+  // normalise to 1,1
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  for(const p of parts){ minx=Math.min(minx,p.x1); miny=Math.min(miny,p.y1); maxx=Math.max(maxx,p.x2); maxy=Math.max(maxy,p.y2); }
+  const dx=1-minx, dy=1-miny; for(const p of parts){ p.x1+=dx; p.x2+=dx; p.y1+=dy; p.y2+=dy; }
+  const H=maxy-miny+1, W=maxx-minx+1;
+  return {ok:true, id, parts, H, W};
+}
+
+/* Composite (join form) */
+function parseCompositeJoin(block){
+  const hdr = block.match(/^<\s*([\w-]+)\s*\|\s*([\s\S]+)>\s*$/);
+  if(!hdr) return {ok:false, err:`Cannot parse composite join header: ${esc(block)}`};
+  const id=hdr[1], rhs=hdr[2].trim();
+  const pairs = splitTopLevel(rhs,';').filter(s=>s.trim().length);
+  const parsedPairs=[];
+  for(const p of pairs){
+    const subs = extractTopBlocks(p).map(x=>x.trim()); if(subs.length!==2) return {ok:false, err:`Join pair must contain two <...>: ${esc(p)}`};
+    const A=parseJoinSub(subs[0]); const B=parseJoinSub(subs[1]);
+    if(!A.ok) return {ok:false, err:A.err}; if(!B.ok) return {ok:false, err:B.err};
+    parsedPairs.push({A,B});
+  }
+  return {ok:true, id, pairs:parsedPairs};
+}
+function splitTopLevel(s, sep){
+  let out=[],d=0,start=0;
+  for(let i=0;i<s.length;i++){
+    const ch=s[i];
+    if(ch==='<' ) d++;
+    else if(ch==='>') d=Math.max(0,d-1);
+    else if(ch===sep && d===0){ out.push(s.slice(start,i)); start=i+1; }
+  }
+  out.push(s.slice(start));
+  return out;
+}
+function parseJoinSub(b){
+  const m = b.match(/^<\s*(\^)?\s*([\w-]+)\s*\|\s*\(\s*(\d+)\s*,\s*(\d+)\s*;\s*(\d+)\s*,\s*(\d+)\s*\)\s*(X|-X|Y|-Y)\s*>\s*$/);
+  if(!m) return {ok:false, err:`Cannot parse join sub-block: ${esc(b)}`};
+  const hat=!!m[1], id=m[2], y1=+m[3], x1=+m[4], y2=+m[5], x2=+m[6], edge=m[7];
+  const ny1=Math.min(y1,y2), nx1=Math.min(x1,x2), ny2=Math.max(y1,y2), nx2=Math.max(x1,x2);
+  return {ok:true, hat, id, y1:ny1,x1:nx1,y2:ny2,x2:nx2, edge};
+}
+function oppositeEdges(a,b){ return (a==='X'&&b==='-X')||(a==='-X'&&b==='X')||(a==='Y'&&b==='-Y')||(a==='-Y'&&b==='Y'); }
+function buildCompositeFromJoins(spec, atomics, issues){
+  const keyOf=(s)=>(s.hat?'^:':'')+s.id;
+  const comp=new Map();
+  for(const {A,B} of spec.pairs){
+    for(const s of [A,B]){
+      const base=atomics.get(s.id);
+      if(!base){ issues.push(`Composite ${spec.id}: unknown atomic "${s.id}".`); continue; }
+      const H=s.hat?base.W:base.H, W=s.hat?base.H:base.W;
+      if(!comp.has(keyOf(s))) comp.set(keyOf(s), {id:s.id, hat:s.hat, H, W});
+    }
+  }
+  const rec=(k)=>comp.get(k);
+  function placeRelative(Arec, As, Brec, Bs){
+    if(!oppositeEdges(As.edge,Bs.edge)){ issues.push(`Composite ${spec.id}: edges must be opposite (${As.edge} vs ${Bs.edge}).`); return false; }
+    const lenA = (As.edge==='X'||As.edge==='-X') ? (As.x2-As.x1+1) : (As.y2-As.y1+1);
+    const lenB = (Bs.edge==='X'||Bs.edge==='-X') ? (Bs.x2-Bs.x1+1) : (Bs.y2-Bs.y1+1);
+    if(lenA!==lenB){ issues.push(`Composite ${spec.id}: edge-run length mismatch (${lenA} vs ${lenB}).`); return false; }
+    let x1B,y1B;
+    if(As.edge==='Y'&&Bs.edge==='-Y'){ x1B=Arec.x1+Arec.W; y1B=Arec.y1+(As.y1-Bs.y1); }
+    else if(As.edge==='-Y'&&Bs.edge==='Y'){ x1B=Arec.x1-Brec.W; y1B=Arec.y1+(As.y1-Bs.y1); }
+    else if(As.edge==='X'&&Bs.edge==='-X'){ y1B=Arec.y1+Arec.H; x1B=Arec.x1+(As.x1-Bs.x1); }
+    else if(As.edge==='-X'&&Bs.edge==='X'){ y1B=Arec.y1-Brec.H; x1B=Arec.x1+(As.x1-Bs.x1); }
+    else { issues.push(`Composite ${spec.id}: unsupported edge pair ${As.edge} ↔ ${Bs.edge}.`); return false; }
+    if(Brec.x1!=null){ if(Brec.x1!==x1B||Brec.y1!==y1B){ issues.push(`Composite ${spec.id}: inconsistent placement for ${Bs.hat?'^ ':''}${Bs.id}.`); return false; } return true; }
+    Brec.x1=x1B; Brec.y1=y1B; return true;
+  }
+  if(spec.pairs.length){
+    const {A,B}=spec.pairs[0];
+    const Ar=rec(keyOf(A)), Br=rec(keyOf(B));
+    Ar.x1=1; Ar.y1=1; placeRelative(Ar,A,Br,B);
+  }
+  // propagate
+  let progressed=true, guard=0;
+  while(progressed && guard++<64){
+    progressed=false;
+    for(const {A,B} of spec.pairs){
+      const Ar=rec(keyOf(A)), Br=rec(keyOf(B)); if(!Ar||!Br) continue;
+      if(Ar.x1!=null && Br.x1==null){ if(placeRelative(Ar,A,Br,B)) progressed=true; }
+      else if(Br.x1!=null && Ar.x1==null){ if(placeRelative(Br,B,Ar,A)) progressed=true; }
+    }
+  }
+  // collect + normalise
+  const parts=[]; for(const c of comp.values()){
+    if(c.x1==null){ issues.push(`Composite ${spec.id}: a component of ${c.hat?'^ ':''}${c.id} was not placed.`); continue; }
+    parts.push({y1:c.y1,x1:c.x1,y2:c.y1+c.H-1,x2:c.x1+c.W-1,label:(c.hat?'^ ':'')+c.id});
+  }
+  if(!parts.length) return {parts:[],H:0,W:0};
+  let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+  for(const p of parts){ minx=Math.min(minx,p.x1); miny=Math.min(miny,p.y1); maxx=Math.max(maxx,p.x2); maxy=Math.max(maxy,p.y2);}
+  const dx=1-minx, dy=1-miny; for(const p of parts){ p.x1+=dx; p.x2+=dx; p.y1+=dy; p.y2+=dy; }
+  return {parts, H:maxy-miny+1, W:maxx-minx+1};
+}
+
+/* Instances */
+function parseInstance(block){
+  const m = block.match(/^<\s*([\w-]+)\s*@\s*([\w-]+)\s*\|\s*\{\s*Ref\s+([-\w]+)\s*\|\s*Rot\s+([-\d]+)\s*\}\s*\{\s*(-?\d+)\s*,\s*(-?\d+)\s*\}\s*>\s*$/s);
+  if(!m) return {ok:false, err:`Cannot parse instance: ${esc(block)}`};
+  const id=m[1], compId=m[2], ref=m[3].toUpperCase(), rotStr=m[4], y=+m[5], x=+m[6];
+  const rot=(rotStr==='-'?0:parseInt(rotStr,10));
+  if(![0,90,180,270].includes(rot)) return {ok:false, err:`Instance ${id}: Rot must be -,90,180,270.`};
+  if(!['-','X','Y','XY'].includes(ref)) return {ok:false, err:`Instance ${id}: Ref must be -, X, Y, or XY.`};
+  return {ok:true, id, compId, ref, rot, y, x};
+}
+
+/* Transform (on composite bbox) */
+function transformRects(rects, Hc, Wc, ref, rot){
+  let parts = rects.map(r=>({x1:r.x1,x2:r.x2,y1:r.y1,y2:r.y2,label:r.label}));
+  let H = Hc, W = Wc;
+
+  function rot90(rs,H0,W0){
+    const out=[]; for(const r of rs){
+      out.push({ x1:r.y1, x2:r.y2, y1:W0 - r.x2 + 1, y2:W0 - r.x1 + 1, label:r.label });
+    }
+    return {parts:out, H:W0, W:H0};
+  }
+  function rot180(rs,H0,W0){
+    const out=[]; for(const r of rs){
+      out.push({ x1:W0 - r.x2 + 1, x2:W0 - r.x1 + 1, y1:H0 - r.y2 + 1, y2:H0 - r.y1 + 1, label:r.label });
+    }
+    return {parts:out, H:H0, W:W0};
+  }
+  function rot270(rs,H0,W0){
+    const out=[]; for(const r of rs){
+      out.push({ x1:H0 - r.y2 + 1, x2:H0 - r.y1 + 1, y1:r.x1, y2:r.x2, label:r.label });
+    }
+    return {parts:out, H:W0, W:H0};
+  }
+
+  if(rot===90){ const t=rot90(parts,H,W); parts=t.parts; H=t.H; W=t.W; }
+  else if(rot===180){ const t=rot180(parts,H,W); parts=t.parts; }
+  else if(rot===270){ const t=rot270(parts,H,W); parts=t.parts; H=t.H; W=t.W; }
+
+  if(ref.includes('X')){ for(const r of parts){ const y1p=H - r.y2 + 1, y2p=H - r.y1 + 1; r.y1=y1p; r.y2=y2p; } }
+  if(ref.includes('Y')){ for(const r of parts){ const x1p=W - r.x2 + 1, x2p=W - r.x1 + 1; r.x1=x1p; r.x2=x2p; } }
+
+  return {parts,H,W};
+}
+
+/* ================= State ================= */
+const State = {
+  atomics:new Map(),     // id -> {H,W}
+  composites:new Map(),  // id -> {parts,H,W}
+  instances:[],          // {id,compId,ref,rot,y,x}
+  issues:[],
+  mode:'instances',
+  focusAtomic:null,
+  highlightId:null,
+  clickMark:null         // {y,x,ts}
+};
+
+// Panning state
+let _panDrag=null; // {startPx,startPy,startOffX,startOffY}
+let _spacePan=false;
+
+const el = {
+  notation: document.getElementById('notation'),
+  parseBtn: document.getElementById('parseBtn'),
+  demoBtn: document.getElementById('demoBtn'),
+  modeSel: document.getElementById('modeSel'),
+  compositeSel: document.getElementById('compositeSel'),
+  fitBtn: document.getElementById('fitBtn'),
+  boldGrid: document.getElementById('boldGrid'),
+  showAxes: document.getElementById('showAxes'),
+  showAnchors: document.getElementById('showAnchors'),
+  issues: document.getElementById('issues'),
+  summaryMono: document.getElementById('summaryMono'),
+  countA: document.getElementById('countA'),
+  countC: document.getElementById('countC'),
+  countI: document.getElementById('countI'),
+  hiBadge: document.getElementById('hiBadge'),
+  clickBadge: document.getElementById('clickBadge'),
+  thumbs: document.getElementById('thumbs'),
+  scrollX: document.getElementById('scrollX'),
+  scrollY: document.getElementById('scrollY'),
+  zoom: document.getElementById('zoom')
+};
+
+/* ================= Thumbnails ================= */
+function buildThumbnails(){
+  el.thumbs.innerHTML='';
+  for(const [id, a] of State.atomics){
+    const card = document.createElement('div'); card.className='thumb'; card.title=`${id}  ${a.H}×${a.W}`;
+    const label = document.createElement('div'); label.innerHTML = `<span class="badge mono">${esc(id)}</span> <span class="muted mono">${a.H}×${a.W}</span>`;
+    const c = document.createElement('canvas'); c.width=256; c.height=110;
+    drawThumb(c, a.H, a.W, id);
+    card.appendChild(c); card.appendChild(label);
+    card.onclick = ()=>{
+      State.highlightId=id; el.hiBadge.textContent=id; scheduleDraw(); // do NOT change mode
+    };
+    el.thumbs.appendChild(card);
+  }
+}
+function drawThumb(c, H, W, id){
+  const g=16, ctx2=c.getContext('2d');
+  ctx2.fillStyle='#f8fbff'; ctx2.fillRect(0,0,c.width,c.height);
+  const totalW=W*g, totalH=H*g, x0=(c.width-totalW)/2, y0=(c.height-totalH)/2;
+  for(let yy=0; yy<H; yy++){
+    for(let xx=0; xx<W; xx++){
+      const sx=x0+xx*g, sy=y0+yy*g;
+      const fill=colorFor(id), stroke=strokeForFill(fill);
+      ctx2.fillStyle=fill; ctx2.fillRect(sx,sy,g,g);
+      ctx2.strokeStyle=stroke; ctx2.strokeRect(sx,sy,g,g);
+    }
+  }
+  ctx2.strokeStyle='#8ca2c0'; ctx2.lineWidth=1.5; ctx2.strokeRect(x0,y0,totalW,totalH);
+}
+
+/* ================= Parse all ================= */
+function parseAll(){
+  State.atomics.clear(); State.composites.clear(); State.instances.length=0; State.issues.length=0;
+
+  const blocks = extractTopBlocks(el.notation.value);
+
+  for(const b of blocks){ if(classifyBlock(b)==='atomic'){ const r=parseAtomic(b); if(r.ok) State.atomics.set(r.id,{H:r.H,W:r.W}); else State.issues.push(r.err); } }
+
+  const pendingJoins=[];
+  for(const b of blocks){
+    const cls=classifyBlock(b);
+    if(cls==='composite-coords'){ const r=parseCompositeCoords(b); if(r.ok) State.composites.set(r.id,{parts:r.parts,H:r.H,W:r.W}); else State.issues.push(r.err); }
+    else if(cls==='composite-join'){ const r=parseCompositeJoin(b); if(r.ok) pendingJoins.push(r); else State.issues.push(r.err); }
+  }
+  for(const spec of pendingJoins){
+    if(State.composites.has(spec.id)) continue;
+    const built = buildCompositeFromJoins(spec, State.atomics, State.issues);
+    if(built.parts.length) State.composites.set(spec.id,built); else State.issues.push(`Composite ${spec.id}: could not build from joins.`);
+  }
+
+  for(const b of blocks){ if(classifyBlock(b)==='instance'){ const r=parseInstance(b); if(r.ok) State.instances.push(r); else State.issues.push(r.err); } }
+
+  // UI
+  el.countA.textContent=String(State.atomics.size);
+  el.countC.textContent=String(State.composites.size);
+  el.countI.textContent=String(State.instances.length);
+  el.issues.className = State.issues.length ? 'status err' : 'status ok';
+  el.issues.innerHTML = State.issues.length ? State.issues.map(esc).join('<br>') : 'No issues';
+  el.summaryMono.textContent = [
+    `Atomics: ${[...State.atomics.entries()].map(([k,v])=>`${k}=${v.H}×${v.W}`).join(', ')||'—'}`,
+    `Composites: ${[...State.composites.keys()].join(', ')||'—'}`,
+    `Instances: ${State.instances.map(x=>x.id+'@'+x.compId).join(', ')||'—'}`
+  ].join('\n');
+
+  const old = el.compositeSel.value;
+  el.compositeSel.innerHTML = '<option value="">—</option>' + [...State.composites.keys()].map(id=>`<option value="${id}">${id}</option>`).join('');
+  if(State.composites.has(old)) el.compositeSel.value=old;
+
+  buildThumbnails();
+  scheduleDraw();
+}
+
+/* ================= Render planning ================= */
+const Render = { parts:[], bbox:null, perComposite:[] }; // perComposite used in instances
+function toWorld(p, dx, dy){ return {x1:p.x1+dx, x2:p.x2+dx, y1:p.y1+dy, y2:p.y2+dy, label:p.label}; }
+
+function rebuildRender(){
+  Render.parts.length=0; Render.bbox=null; Render.perComposite.length=0;
+
+  if(State.mode==='atomic'){
+    const id = State.focusAtomic ?? ([...State.atomics.keys()][0]||null);
+    if(!id) return;
+    const a=State.atomics.get(id);
+    const p={y1:1,x1:1,y2:a.H,x2:a.W,label:id};
+    const w = toWorld(p,0,0);
+    Render.parts.push({...w,colorKey:id});
+    Render.bbox = {minX:1,minY:1,maxX:a.W,maxY:a.H};
+  }
+  else if(State.mode==='composite'){
+    const cid = document.getElementById('compositeSel').value || ([...State.composites.keys()][0]||null);
+    if(!cid) return;
+    const C = State.composites.get(cid);
+    for(const p of C.parts){
+      const w = toWorld(p,0,0);
+      Render.parts.push({...w,colorKey:p.label||cid});
+    }
+    Render.bbox = {minX:1,minY:1,maxX:C.W,maxY:C.H, label: cid};
+  }
+  else{
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const inst of State.instances){
+      const C = State.composites.get(inst.compId);
+      if(!C) continue;
+      const t = transformRects(C.parts, C.H, C.W, inst.ref, inst.rot);
+      // collect parts and per-instance bbox
+      let iMinX=Infinity,iMinY=Infinity,iMaxX=-Infinity,iMaxY=-Infinity;
+      for(const p of t.parts){
+        const w = toWorld(p, inst.x-1, inst.y-1);
+        Render.parts.push({...w, colorKey:p.label||inst.compId, instId:inst.id, compId:inst.compId});
+        iMinX=Math.min(iMinX,w.x1); iMaxX=Math.max(iMaxX,w.x2);
+        iMinY=Math.min(iMinY,w.y1); iMaxY=Math.max(iMaxY,w.y2);
+      }
+      if(iMinX!==Infinity){
+        Render.perComposite.push({inst, bounds:{minX:iMinX,minY:iMinY,maxX:iMaxX,maxY:iMaxY}});
+        minX=Math.min(minX,iMinX); maxX=Math.max(maxX,iMaxX);
+        minY=Math.min(minY,iMinY); maxY=Math.max(maxY,iMaxY);
+      }
+    }
+    if(minX!==Infinity) Render.bbox={minX,minY,maxX,maxY};
+  }
+}
+
+/* ================= Scroll/Zoom helpers ================= */
+function updateScrollbars(){
+  const cellsWide = Math.max(1, Math.floor(grid.w / grid.g));
+  const cellsHigh = Math.max(1, Math.floor(grid.h / grid.g));
+  const b = computeContentBBox();
+  const maxOffX = Math.max(0, b.maxX - cellsWide);
+  const maxOffY = Math.max(0, b.maxY - cellsHigh);
+  el.scrollX.max = String(maxOffX);
+  el.scrollY.max = String(maxOffY);
+  grid.offX = clamp(grid.offX, 0, maxOffX);
+  grid.offY = clamp(grid.offY, 0, maxOffY);
+  el.scrollX.value = String(grid.offX);
+  el.scrollY.value = String(grid.offY);
+}
+function computeContentBBox(){
+  rebuildRender();
+  if(!Render.bbox){
+    // fallback bounds
+    return {minX:1,minY:1,maxX:30,maxY:20};
+  }
+  // ensure non-negative domain and some padding
+  return {
+    minX: Math.max(1, Render.bbox.minX),
+    minY: Math.max(1, Render.bbox.minY),
+    maxX: Math.max(Render.bbox.maxX, Render.bbox.minX+10),
+    maxY: Math.max(Render.bbox.maxY, Render.bbox.minY+8)
+  };
+}
+function fitToContent(){
+  const b = computeContentBBox();
+  const cellsWide = grid.w / grid.g;
+  const cellsHigh = grid.h / grid.g;
+  const cx = b.minX - 1 + (b.maxX - b.minX + 1)/2;
+  const cy = b.minY - 1 + (b.maxY - b.minY + 1)/2;
+  let offX = Math.floor(cx - cellsWide/2);
+  let offY = Math.floor(cy - cellsHigh/2);
+  offX = Math.max(0, offX); offY = Math.max(0, offY);
+  grid.offX = offX; grid.offY = offY;
+  updateScrollbars(); scheduleDraw();
+}
+
+/* ================= Drawing ================= */
+let _raf=null; function scheduleDraw(){ if(_raf) return; _raf=requestAnimationFrame(()=>{_raf=null; draw();}); }
+
+function drawGrid(){
+  const g=grid.g, w=grid.w, h=grid.h;
+
+  ctx.save();
+  ctx.fillStyle='#f8fbff'; ctx.fillRect(0,0,w,h);
+
+  if(el.showAxes.checked){
+    ctx.strokeStyle=css('--accent'); ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(grid.lineX(0), grid.lineY(0)); ctx.lineTo(w, grid.lineY(0));
+    ctx.moveTo(grid.lineX(0), grid.lineY(0)); ctx.lineTo(grid.lineX(0), 0); ctx.stroke();
+  }
+
+  // fine grid
+  ctx.strokeStyle=css('--grid'); ctx.lineWidth=1; ctx.beginPath();
+  const cols=Math.ceil(w/g)+2, rows=Math.ceil(h/g)+2;
+  const gxStart=grid.offX, gyStart=grid.offY;
+  for(let gx=gxStart; gx<=gxStart+cols; gx++){ const x=grid.lineX(gx); ctx.moveTo(x,0); ctx.lineTo(x,h); }
+  for(let gy=gyStart; gy<=gyStart+rows; gy++){ const y=grid.lineY(gy); ctx.moveTo(0,y); ctx.lineTo(w,y); }
+  ctx.stroke();
+
+  // bold-5 grid
+  if(el.boldGrid.checked){
+    ctx.strokeStyle=css('--grid-strong'); ctx.lineWidth=1.25; ctx.beginPath();
+    const gx0=Math.floor(gxStart/5)*5, gy0=Math.floor(gyStart/5)*5;
+    for(let gx=gx0; gx<=gxStart+cols; gx+=5){ const x=grid.lineX(gx); ctx.moveTo(x,0); ctx.lineTo(x,h); }
+    for(let gy=gy0; gy<=gyStart+rows; gy+=5){ const y=grid.lineY(gy); ctx.moveTo(0,y); ctx.lineTo(w,y); }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPerimeterFromParts(parts, dx=0, dy=0, color='#8ca2c0', lineWidth=3){
+  const g=grid.g, occ=new Set();
+  for(const p of parts){
+    for(let y=p.y1;y<=p.y2;y++) for(let x=p.x1;x<=p.x2;x++) occ.add(`${y+dy},${x+dx}`);
+  }
+  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lineWidth; ctx.setLineDash([]);
+  for(const key of occ){
+    const [y,x]=key.split(',').map(Number);
+    const xL=grid.cellLeft(x), yT=grid.cellTop(y), xR=xL+g, yB=yT+g;
+    if(!occ.has(`${y+1},${x}`)){ ctx.beginPath(); ctx.moveTo(xL,yT); ctx.lineTo(xR,yT); ctx.stroke(); }
+    if(!occ.has(`${y},${x+1}`)){ ctx.beginPath(); ctx.moveTo(xR,yT); ctx.lineTo(xR,yB); ctx.stroke(); }
+    if(!occ.has(`${y-1},${x}`)){ ctx.beginPath(); ctx.moveTo(xL,yB); ctx.lineTo(xR,yB); ctx.stroke(); }
+    if(!occ.has(`${y},${x-1}`)){ ctx.beginPath(); ctx.moveTo(xL,yT); ctx.lineTo(xL,yB); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+
+/* Attachment edges between adjacent rectangles (like Sandbox) */
+function computeContactsFromRects(rects){
+  const res=[];
+  for(let i=0;i<rects.length;i++){
+    for(let j=i+1;j<rects.length;j++){
+      const a=rects[i], b=rects[j];
+      // horizontal adjacency (a above b or vice versa)
+      if(a.y2 + 1 === b.y1){
+        const x1 = Math.max(a.x1,b.x1), x2 = Math.min(a.x2,b.x2);
+        if(x1<=x2) res.push({kind:'h', gy:a.y2, x1, x2});
+      }
+      if(b.y2 + 1 === a.y1){
+        const x1 = Math.max(a.x1,b.x1), x2 = Math.min(a.x2,b.x2);
+        if(x1<=x2) res.push({kind:'h', gy:b.y2, x1, x2});
+      }
+      // vertical adjacency (left/right)
+      if(a.x2 + 1 === b.x1){
+        const y1 = Math.max(a.y1,b.y1), y2 = Math.min(a.y2,b.y2);
+        if(y1<=y2) res.push({kind:'v', gx:a.x2, y1, y2});
+      }
+      if(b.x2 + 1 === a.x1){
+        const y1 = Math.max(a.y1,b.y1), y2 = Math.min(a.y2,b.y2);
+        if(y1<=y2) res.push({kind:'v', gx:b.x2, y1, y2});
+      }
+    }
+  }
+  return res;
+}
+function drawContactsSegments(segments, dx=0, dy=0, color=css('--contact'), lineWidth=3){
+  const g=grid.g;
+  ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=lineWidth;
+  for(const s of segments){
+    if(s.kind==='h'){
+      const y = grid.lineY(s.gy + dy);
+      const xL = grid.lineX((s.x1 + dx) - 1);
+      const xR = grid.lineX(s.x2 + dx);
+      ctx.beginPath(); ctx.moveTo(xL,y); ctx.lineTo(xR,y); ctx.stroke();
+    }else{
+      const x = grid.lineX(s.gx + dx);
+      const yTop = grid.lineY(s.y2 + dy);
+      const yBot = grid.lineY((s.y1 + dy) - 1);
+      ctx.beginPath(); ctx.moveTo(x,yTop); ctx.lineTo(x,yBot); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function draw(){
+  rebuildRender();
+  drawGrid();
+
+  // draw parts
+  const showAnch = el.showAnchors.checked;
+  const hiRects=[]; // collect highlight rects and draw on top later
+  for(const p of Render.parts){
+    const g=grid.g;
+    const x0 = grid.cellLeft(p.x1);
+    const y0 = grid.cellTop(p.y1 + (p.y2-p.y1));
+    const H=p.y2-p.y1+1, W=p.x2-p.x1+1;
+    const c=colorFor(p.colorKey), s=strokeForFill(c);
+
+    // fill + inner borders + anchors
+    for(let yy=0; yy<H; yy++){
+      for(let xx=0; xx<W; xx++){
+        const sx=x0+xx*g, sy=y0+yy*g;
+        ctx.fillStyle=c; ctx.fillRect(sx,sy,g,g);
+        ctx.strokeStyle=s; ctx.lineWidth=1; ctx.strokeRect(sx,sy,g,g);
+        if(showAnch){
+          // show absolute world cell coordinates (y,x) with adaptive contrast
+          const absY = p.y1 + yy;
+          const absX = p.x1 + xx;
+          const fill = c;
+          const m = /hsl\(([-\d.]+),\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(fill);
+          let textColor = '#111';
+          if(m){ const l = parseFloat(m[3]); textColor = l>60 ? '#111111' : '#f9fafb'; }
+          ctx.fillStyle=textColor; ctx.font='10px ui-monospace,Menlo,Consolas,monospace';
+          ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText(`${absY},${absX}`, sx+g/2, sy+g/2);
+        }
+      }
+    }
+    // outer outline
+    ctx.lineWidth = 1.5; ctx.strokeStyle = css('--bbox');
+    ctx.strokeRect(x0, y0, W*g, H*g);
+
+    // highlight atomic parts by ID or by matching dims when labels are absent (coord composites)
+    if(State.highlightId){
+      let shouldHi=false;
+      const norm = (p.label||'').replace(/^\^ /,'');
+      if(norm === State.highlightId){
+        shouldHi=true;
+      }else if(State.atomics.has(State.highlightId)){
+        const a = State.atomics.get(State.highlightId);
+        if(a){ const match=(H===a.H&&W===a.W)||(H===a.W&&W===a.H); if(match) shouldHi=true; }
+      }
+      if(shouldHi){ hiRects.push({x0:x0, y0:y0, w:W*g, h:H*g}); }
+    }
+  }
+
+  // attachment edges: per mode
+  if(State.mode==='composite'){
+    const cid = el.compositeSel.value || ([...State.composites.keys()][0]||null);
+    if(cid){
+      const C = State.composites.get(cid);
+      const segs = computeContactsFromRects(C.parts);
+      drawContactsSegments(segs, 0, 0, css('--contact'), 3);
+    }
+  } else if(State.mode==='instances' && Render.perComposite.length){
+    for(const rec of Render.perComposite){
+      const C = State.composites.get(rec.inst.compId); if(!C) continue;
+      const t = transformRects(C.parts, C.H, C.W, rec.inst.ref, rec.inst.rot);
+      const segs = computeContactsFromRects(t.parts);
+      drawContactsSegments(segs, rec.inst.x-1, rec.inst.y-1, css('--contact'), 3);
+    }
+  } else if(State.mode==='atomic'){
+    // No internal attachments within a single atomic rectangle
+  }
+
+  // composite bboxes and names
+  if(State.mode==='composite'){
+    const cid = el.compositeSel.value || ([...State.composites.keys()][0]||null);
+    if(cid){
+      const C = State.composites.get(cid);
+      const g=grid.g;
+      const x0=grid.cellLeft(1), y0=grid.cellTop(C.H);
+      const W=C.W*g, H=C.H*g;
+      ctx.save();
+      ctx.setLineDash([6,3]); ctx.strokeStyle='#E74099'; ctx.lineWidth=1.5; ctx.strokeRect(x0,y0,W,H); ctx.setLineDash([]);
+      drawPerimeterFromParts(C.parts, 0, 0, '#E74099', 4);
+      ctx.fillStyle='#c03278'; ctx.font='bold 14px ui-monospace,Menlo,Consolas,monospace';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(cid, x0+W/2, y0+H/2);
+      ctx.restore();
+    }
+  }
+
+  // instance bboxes and names
+  if(State.mode==='instances' && Render.perComposite.length){
+    for(const rec of Render.perComposite){
+      const b=rec.bounds, g=grid.g;
+      const x0=grid.cellLeft(b.minX), y0=grid.cellTop(b.maxY);
+      const W=(b.maxX-b.minX+1)*g, H=(b.maxY-b.minY+1)*g;
+      ctx.save();
+      ctx.setLineDash([6,3]); ctx.strokeStyle='#E74099'; ctx.lineWidth=1.5; ctx.strokeRect(x0,y0,W,H); ctx.setLineDash([]);
+      // perimeter traced from parts of that instance only
+      const C = State.composites.get(rec.inst.compId);
+      const t = transformRects(C.parts, C.H, C.W, rec.inst.ref, rec.inst.rot);
+      drawPerimeterFromParts(t.parts, rec.inst.x-1, rec.inst.y-1, '#E74099', 4);
+      // labels
+      ctx.fillStyle='#111827'; ctx.font='12px ui-monospace,Menlo,Consolas,monospace'; ctx.textAlign='left'; ctx.textBaseline='top';
+      ctx.fillText(rec.inst.id, x0+4, y0+4);
+      ctx.fillStyle='#c03278'; ctx.font='bold 13px ui-monospace,Menlo,Consolas,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(rec.inst.compId, x0+W/2, y0+H/2);
+      ctx.restore();
+    }
+  }
+
+  // click marker
+  if(State.clickMark){
+    const g=grid.g, y=State.clickMark.y, x=State.clickMark.x;
+    const xL=grid.cellLeft(x), yT=grid.cellTop(y), xC=xL+g/2, yC=yT+g/2;
+    ctx.save();
+    ctx.strokeStyle='#7c3aed'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(xC-10,yC); ctx.lineTo(xC+10,yC); ctx.moveTo(xC,yC-10); ctx.lineTo(xC,yC+10); ctx.stroke();
+    ctx.restore();
+  }
+
+  // draw highlights on top of everything else
+  if(hiRects.length){
+    ctx.save(); ctx.strokeStyle='#ff0033'; ctx.lineWidth=5; ctx.setLineDash([8,5]);
+    for(const r of hiRects){ ctx.strokeRect(r.x0-3, r.y0-3, r.w+6, r.h+6); }
+    ctx.restore();
+  }
+}
+
+/* ================= Events: UI ================= */
+function resizeCanvas(){
+  const host = document.getElementById('main');
+  const r = host.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.ceil(r.width * dpr));
+  canvas.height = Math.max(1, Math.ceil(r.height * dpr));
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  updateScrollbars();
+  scheduleDraw();
+}
+new ResizeObserver(resizeCanvas).observe(document.getElementById('main'));
+window.addEventListener('resize', resizeCanvas);
+
+document.getElementById('parseBtn').onclick = ()=>{ parseAll(); updateScrollbars(); fitToContent(); };
+document.getElementById('modeSel').onchange = ()=>{
+  State.mode=document.getElementById('modeSel').value;
+  if(State.mode==='atomic'){
+    // centre selected atomic
+    const id = State.focusAtomic ?? ([...State.atomics.keys()][0]||null);
+    if(id){ grid.offX=0; grid.offY=0; fitToContent(); }
+  } else if(State.mode==='composite'){ fitToContent(); }
+  updateScrollbars(); scheduleDraw();
+};
+document.getElementById('compositeSel').onchange = ()=>{ State.mode='composite'; document.getElementById('modeSel').value='composite'; fitToContent(); };
+document.getElementById('fitBtn').onclick = ()=>{ fitToContent(); };
+document.getElementById('boldGrid').onchange = ()=>scheduleDraw();
+document.getElementById('showAxes').onchange = ()=>scheduleDraw();
+document.getElementById('showAnchors').onchange = ()=>scheduleDraw();
+
+el.scrollX.oninput = ()=>{ grid.offX = parseInt(el.scrollX.value,10)||0; scheduleDraw(); };
+el.scrollY.oninput = ()=>{ grid.offY = parseInt(el.scrollY.value,10)||0; scheduleDraw(); };
+el.zoom.oninput = ()=>{ grid.g = parseInt(el.zoom.value,10)||44; updateScrollbars(); scheduleDraw(); };
+
+/* Mouse wheel: zoom by default; Shift scrolls X */
+canvas.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  if(e.ctrlKey || e.metaKey || (!e.shiftKey && !e.altKey)){ // default: zoom
+    // zoom about cursor
+    const oldG = grid.g;
+    const delta = Math.sign(e.deltaY);
+    const newG = clamp(oldG - delta*2, 16, 96);
+    if(newG!==oldG){
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      const cellX = grid.cellX(px), cellY = grid.cellY(py);
+      grid.g = newG; el.zoom.value=String(newG);
+      // keep cursor on same cell by recomputing offset
+      const cellsWide = grid.w / grid.g, cellsHigh = grid.h / grid.g;
+      grid.offX = clamp(Math.round(cellX - cellsWide/2), 0, parseInt(el.scrollX.max,10)||0);
+      grid.offY = clamp(Math.round(cellY - cellsHigh/2), 0, parseInt(el.scrollY.max,10)||0);
+      updateScrollbars(); scheduleDraw();
+    }
+  }else if(e.shiftKey){
+    grid.offX = clamp(grid.offX + Math.sign(e.deltaY)*2, 0, parseInt(el.scrollX.max,10)||0);
+    el.scrollX.value = String(grid.offX); scheduleDraw();
+  }
+}, {passive:false});
+
+/* Pan & Click */
+canvas.addEventListener('pointerdown', (e)=>{
+  const rect = canvas.getBoundingClientRect(); const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  const isPan = e.button===1 || _spacePan; // middle button or Space+drag for pan
+  if(isPan){
+    _panDrag = { startPx:px, startPy:py, startOffX:grid.offX, startOffY:grid.offY };
+    canvas.setPointerCapture(e.pointerId);
+  }else{
+    const y = grid.cellY(py), x = grid.cellX(px);
+    State.clickMark = {y,x,ts:Date.now()}; el.clickBadge.textContent = `${y},${x}`;
+    scheduleDraw();
+  }
+});
+canvas.addEventListener('pointermove', (e)=>{
+  if(!_panDrag) return;
+  const rect = canvas.getBoundingClientRect(); const px=e.clientX-rect.left, py=e.clientY-rect.top;
+  const dx = Math.round((px - _panDrag.startPx)/grid.g);
+  const dy = Math.round((py - _panDrag.startPy)/grid.g);
+  const maxX = parseInt(el.scrollX.max,10)||0, maxY=parseInt(el.scrollY.max,10)||0;
+  grid.offX = clamp(_panDrag.startOffX - dx, 0, maxX);
+  grid.offY = clamp(_panDrag.startOffY + dy, 0, maxY);
+  el.scrollX.value=String(grid.offX); el.scrollY.value=String(grid.offY);
+  scheduleDraw();
+});
+window.addEventListener('pointerup', (e)=>{ if(_panDrag){ try{ canvas.releasePointerCapture(e.pointerId); }catch(_){} _panDrag=null; }});
+window.addEventListener('keydown',(e)=>{ if(e.code==='Space'){ _spacePan=true; canvas.style.cursor='grab'; } });
+window.addEventListener('keyup',(e)=>{ if(e.code==='Space'){ _spacePan=false; canvas.style.cursor='default'; } });
+
+/* Demo content */
+document.getElementById('demoBtn').onclick = ()=>{
+  el.notation.value =
+`# Library of Atomic Objects Used
+< R1 | 1,1 ; 3,4 >
+< R2 | 1,1 ; 2,5 >
+< R3 | 1,1 ; 2,4 >
+< R4 | 1,1 ; 2,3 >
+
+# Library of Composite Objects Used
+
+# Composite Object C1 (2 components)
+# Joining Operation Form:
+< C1 | < ^ R1 | ( 2,3 ; 3,3 )Y > < R2 | ( 1,1 ; 2,1 )-Y > >
+# Composite Coordinate Form:
+< C1 | { 1,1 ; 4,3 } { 2,4 ; 3,8 } >
+
+# Composite Object C2 (3 components)
+# Joining Operation Form:
+< C2 | < ^ R3 | ( 3,2 ; 4,2 )Y > < R4 | ( 1,1 ; 2,1 )-Y > ; < ^ R3 | ( 1,2 ; 2,2 )Y > < ^ R2 | ( 4,1 ; 5,1 )-Y > ; < R4 | ( 1,1 ; 1,2 )-X > < ^ R2 | ( 5,1 ; 5,2 )X > >
+# Composite Coordinate Form:
+< C2 | { 1,3 ; 5,4 } { 4,1 ; 7,2 } { 6,3 ; 7,5 } >
+
+# Instances on Canvas
+< I1 @ C1 | { Ref - | Rot - } { 8,8 } >
+< I2 @ C2 | { Ref - | Rot - } { 8,17 } >`;
+  parseAll(); fitToContent();
+};
+
+/* Boot */
+function init(){
+  // sensible starting zoom
+  grid.g = parseInt(el.zoom.value,10)||44;
+  resizeCanvas();
+  parseAll();
+  fitToContent();
+}
+init();
+</script>
+</body>
+</html>
