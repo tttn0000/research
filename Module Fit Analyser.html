@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Module Fit Analyser — Stable, Nuanced UI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f7f9fc;
+    --panel:#ffffff;
+    --ink:#0b1526;
+    --ink-2:#43526a;
+    --muted:#6b7280;
+    --accent:#1c6ef2;
+    --ok:#159957;
+    --warn:#b45309;
+    --err:#d61f30;
+    --line:#d7dee8;
+    --pill:#eef6ff;
+    --chip:#f1f4fb;
+    --table-head:#f4f7fb;
+
+    /* fixed table column widths to stop reflow jitter - more compact */
+    --w-name:auto;     /* flex */
+    --w-dim:90px;
+    --w-k:40px;
+    --w-km:90px;
+    --w-res:80px;
+    --w-fit:90px;
+    --w-shift:90px;
+    --w-shift2:90px;
+    --w-score:50px;
+    --w-suggestion:200px;
+
+    /* badges reserve space to avoid shifting on recompute - more compact */
+    --w-badge-1:120px;  /* weighted fit rate */
+    --w-badge-2:60px;   /* N */
+    --w-badge-3:160px;  /* mean non-fit shift */
+    --w-badge-4:120px;  /* full/half counts */
+  }
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:13px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    /* Stop number-width jitter everywhere */
+    font-variant-numeric: tabular-nums lining-nums;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  *{box-sizing:border-box}
+  .wrap{
+    max-width:1200px; margin:16px auto; padding:0 12px;
+    display:grid; grid-template-columns: 1.2fr 1fr; gap:12px;
+  }
+  h1{font-size:18px; margin:0 0 8px 0}
+  h2{font-size:14px; margin:12px 0 6px}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px;
+    box-shadow:0 1px 0 rgba(0,0,0,.03);
+  }
+  .row{display:grid; grid-template-columns: 140px 1fr; gap:8px; align-items:center; margin:8px 0}
+  .row>label{color:var(--ink-2); font-size:12px}
+  .stack{display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+  .hint{color:var(--muted); font-size:11px}
+
+  input[type="number"], input[type="text"], select, textarea{
+    width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink);
+    font-size:12px;
+  }
+  input[type="range"]{width:100%}
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0 }
+
+  .pill{
+    display:inline-block; background:var(--pill); border:1px solid #d9e7ff; color:#1147a7;
+    padding:2px 6px; border-radius:999px; font-size:10px; line-height:14px;
+  }
+  .toolbar{display:flex; gap:6px; flex-wrap:wrap; align-items:center}
+  .toolbar .spacer{flex:1}
+
+  button{
+    appearance:none; border:1px solid var(--line); background:#fff; color:var(--ink);
+    padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:600; touch-action:manipulation;
+    font-size:11px;
+  }
+  button.primary{background:var(--accent); color:#fff; border-color:transparent}
+  button:disabled{opacity:.6; cursor:not-allowed}
+
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden}
+  .seg label{padding:4px 8px; user-select:none; cursor:pointer; border-right:1px solid var(--line); display:inline-flex; align-items:center; gap:4px; font-size:11px}
+  .seg label:last-child{border-right:none}
+  .seg input{display:none}
+  .seg input:checked+span{background:#eef2f8}
+
+  .anchorbar{position:relative; height:16px; margin-top:4px}
+  .anchorbar .mark{position:absolute; top:6px; width:1px; height:10px; background:#9ab3ff; transform:translateX(-1px)}
+  .anchorbar .mark::after{
+    content:attr(data-val); position:absolute; top:-10px; left:50%; transform:translateX(-50%);
+    font-size:8px; color:#6b7da2; white-space:nowrap;
+    background:rgba(255,255,255,0.9); padding:1px 2px; border-radius:2px;
+  }
+
+  /* critical list */
+  .list{display:flex; flex-direction:column; gap:6px}
+  .cd-item{
+    display:grid; grid-template-columns: 1fr 80px 28px 28px 28px; gap:6px; align-items:center;
+    background:#fff; border:1px solid var(--line); border-radius:6px; padding:6px;
+    cursor:move;
+  }
+  .cd-item.dragging{
+    opacity:0.5; transform:rotate(2deg);
+  }
+  .iconbtn{
+    width:28px; height:28px; border:1px solid var(--line); background:#fff; border-radius:4px; cursor:pointer;
+    display:grid; place-items:center;
+  }
+  .iconbtn:hover{background:#f7f9ff}
+  .drag-handle{cursor:grab}
+  .drag-handle:active{cursor:grabbing}
+  .icon{width:14px; height:14px; display:block; fill:#334155}
+
+  /* Results */
+  .right .panel{position:sticky; top:12px}
+  .hr{height:1px; background:#e8eef7; margin:8px 0}
+  .code{
+    font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    background:#f7fafc; border:1px dashed #d9e2ec; border-radius:6px; padding:8px;
+    white-space:pre-wrap; word-break:break-word; font-size:11px;
+  }
+  .note{background:#f3f6fb; border:1px solid #dbe6fb; padding:6px 8px; border-radius:6px; color:#26457a; min-height:24px}
+
+  .badge{
+    display:inline-block; padding:2px 4px; border-radius:4px; font-size:10px; font-weight:600; text-align:center;
+    border:1px solid #dfe6f3; background:#f5f8fe; color:#123e9b;
+  }
+  .b-ok{background:#e6f6ec; color:#0e6f3a; border-color:#bfe9cf}
+  .b-warn{background:#fff6e6; color:#8a5800; border-color:#ffe1b0}
+  .b-err{background:#ffe9ea; color:#a31322; border-color:#ffd1d6}
+
+  /* Table: fixed layout so numbers never push columns */
+  table{
+    width:100%; border-collapse:collapse; table-layout:fixed;
+    background:#fff; border-radius:4px; overflow:hidden; border:1px solid var(--line); font-size:11px;
+  }
+  th,td{padding:2px; border-bottom:1px solid var(--line); overflow:hidden; text-overflow:ellipsis; line-height:1.2}
+  th{background:var(--table-head); text-align:left; font-weight:700; color:#0b1526; font-size:11px; white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+
+  col.name{width: var(--w-name)}
+  col.dim{width: var(--w-dim)}
+  col.k{width: var(--w-k)}
+  col.km{width: var(--w-km)}
+  col.res{width: var(--w-res)}
+  col.fit{width: var(--w-fit)}
+  col.sdown{width: var(--w-shift)}
+  col.sup{width: var(--w-shift2)}
+  col.score{width: var(--w-score)}
+  col.suggestion{width: var(--w-suggestion)}
+
+  .num{white-space:nowrap; text-align:right; font-size:11px}
+  .nowrap{white-space:nowrap}
+  .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:11px}
+  .fit-yes{color:var(--ok); font-weight:700; font-size:11px}
+  .fit-half{color:#0b5fff; font-weight:700; font-size:11px}
+  .fit-no{color:var(--err); font-weight:700; font-size:11px}
+
+  /* Reserve header badges width */
+  #summaryHeader{display:flex; flex-wrap:wrap; gap:6px}
+  #b1{min-width:var(--w-badge-1)}
+  #b2{min-width:var(--w-badge-2)}
+  #b3{min-width:var(--w-badge-3)}
+  #b4{min-width:var(--w-badge-4)}
+
+  /* Tooltip styles */
+  .tooltip {
+    position: relative;
+    display: inline-block;
+  }
+  .tooltip .tooltiptext {
+    visibility: hidden;
+    width: 200px;
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    border-radius: 6px;
+    padding: 8px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -100px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+  }
+  .tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="left">
+      <div class="panel">
+        <h1>Inputs</h1>
+
+        <div class="row">
+          <label for="moduleSlider">Base module (integer)</label>
+          <div>
+            <input id="moduleSlider" type="range" min="0" max="1000" step="5" value="150">
+            <div class="anchorbar" id="anchorbar"></div>
+            <div class="stack" style="margin-top:6px">
+              <input id="moduleInput" type="number" min="0" max="1000" step="5" value="150">
+              <span class="pill tooltip" id="snapState">
+                sticky snapping on
+                <span class="tooltiptext">Step 5. Sticky snap near key anchors: 25, 30, 50, 60, 75, 100, 120, 150, 300, 600, 900</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Tolerance mode</label>
+          <div class="stack">
+            <div class="seg">
+              <label><input type="radio" name="tolmode" value="percent" checked><span>Percentage of module</span></label>
+              <label><input type="radio" name="tolmode" value="absolute"><span>Absolute number</span></label>
+            </div>
+            <div class="stack" id="tolPercentWrap">
+              <input id="tolPercent" type="number" min="0" max="50" step="0.1" value="1" style="width:80px"><span>%</span>
+            </div>
+            <div class="stack" id="tolAbsWrap" style="display:none">
+              <input id="tolAbs" type="number" min="0" max="1000" step="1" value="5" style="width:100px">
+              <span class="hint tooltip">
+                same unit as dimensions
+                <span class="tooltiptext">Tolerance value uses the same units as your dimension values</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Auto-analyse</label>
+          <div class="stack">
+            <div class="seg">
+              <label><input type="radio" name="autorun" value="on" checked><span>On</span></label>
+              <label><input type="radio" name="autorun" value="off"><span>Off</span></label>
+            </div>
+            <span class="hint tooltip">
+              Auto switches off if list is very large
+              <span class="tooltiptext">Recompute as you type (On) or click Analyse to compute (Off). Auto switches off if list is very large.</span>
+            </span>
+          </div>
+        </div>
+
+        <h2>Critical dimensions</h2>
+        <div class="hint tooltip">
+          Each item has an automatically iterated unique name. You can edit names at any time.
+          <span class="tooltiptext">Each dimension gets a unique name automatically. You can edit these names anytime. Names help identify dimensions in the analysis results.</span>
+        </div>
+        <div class="list" id="cdList" aria-live="polite"></div>
+
+        <div class="toolbar" style="margin-top:8px">
+          <button id="addRow" class="ghost">Add dimension</button>
+          <button id="seedDemo" class="ghost">Load demo</button>
+          <span class="spacer"></span>
+          <button id="analyzeBtn" class="primary">Analyse</button>
+          <button id="exportBtn" class="ghost">Save output</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="panel">
+        <h1>Results</h1>
+        <div id="summaryHeader" class="note"></div>
+
+        <h2>Specified module</h2>
+        <div id="moduleEcho" class="code"></div>
+
+        <h2>Specified tolerance</h2>
+        <div id="tolEcho" class="code"></div>
+
+        <h2>Individual Module Fit Analyses</h2>
+        <div id="tableWrap"></div>
+
+        <h2>Summary of Module Fit Analyses</h2>
+        <div id="summaryStats" class="code"></div>
+        <div id="recommendations" class="code" style="margin-top:6px"></div>
+
+        <div class="hint tooltip" style="margin-top:8px">
+          <strong>Fit rules:</strong> For dimension D and module M, k = round(D/M). Full-fit if |D − k·M| ≤ tolerance. Half-fit (score 0.5) when not full-fit and |D − k₂·(M/2)| ≤ tolerance for odd k₂.
+          <span class="tooltiptext">
+            <strong>Full-fit:</strong> |D − k·M| ≤ tolerance<br>
+            <strong>Half-fit:</strong> |D − k₂·(M/2)| ≤ tolerance for odd k₂ (true half-steps only)<br>
+            <strong>Shifts:</strong> To nearest full multiples down/up
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const anchors = [25,30,50,60,75,100,120,150,300,600,900];
+  const STEP = 5;
+  const SNAP_WINDOW = 6;
+  const HEAVY_THRESHOLD = 400;
+
+  const slider = document.getElementById('moduleSlider');
+  const moduleInput = document.getElementById('moduleInput');
+  const snapState = document.getElementById('snapState');
+  const anchorbar = document.getElementById('anchorbar');
+
+  const tolPercentWrap = document.getElementById('tolPercentWrap');
+  const tolAbsWrap = document.getElementById('tolAbsWrap');
+  const tolPercent = document.getElementById('tolPercent');
+  const tolAbs = document.getElementById('tolAbs');
+
+  const cdList = document.getElementById('cdList');
+  const addRowBtn = document.getElementById('addRow');
+  const seedDemoBtn = document.getElementById('seedDemo');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const exportBtn = document.getElementById('exportBtn');
+
+  const moduleEcho = document.getElementById('moduleEcho');
+  const tolEcho = document.getElementById('tolEcho');
+  const tableWrap = document.getElementById('tableWrap');
+  const summaryStats = document.getElementById('summaryStats');
+  const recommendations = document.getElementById('recommendations');
+  const summaryHeader = document.getElementById('summaryHeader');
+
+  /* anchors under slider */
+  function paintAnchors(){
+    anchorbar.innerHTML = '';
+    const min = +slider.min, max = +slider.max;
+    anchors.forEach((v, i)=>{
+      const x = (v-min)/(max-min)*100;
+      const d = document.createElement('div');
+      d.className='mark'; d.style.left=x+'%'; d.dataset.val=v;
+      
+      // Adjust positioning to prevent overlaps
+      if(i > 0) {
+        const prevX = (anchors[i-1]-min)/(max-min)*100;
+        if(x - prevX < 8) {
+          d.style.left = (prevX + 8) + '%';
+        }
+      }
+      
+      anchorbar.appendChild(d);
+    });
+  }
+  paintAnchors();
+
+  function maybeSnap(val){
+    let out = val;
+    for(const a of anchors){ if(Math.abs(val-a)<=SNAP_WINDOW){ out=a; break; } }
+    out = Math.round(out/STEP)*STEP;
+    out = clamp(out, +slider.min, +slider.max);
+    return out;
+  }
+  function syncModuleFromSlider(){
+    const raw = +slider.value;
+    const sn = maybeSnap(raw);
+    if(sn!==raw){ slider.value=String(sn); snapState.textContent='snapped to anchor'; }
+    else snapState.textContent='sticky snapping on';
+    moduleInput.value = slider.value;
+    autoMaybeAnalyse();
+  }
+  function syncModuleFromInput(){
+    let v=+moduleInput.value||0;
+    v = Math.round(v/STEP)*STEP; v = clamp(v, +slider.min, +slider.max);
+    slider.value=String(v); moduleInput.value=String(v); snapState.textContent='manual entry';
+    autoMaybeAnalyse();
+  }
+  slider.addEventListener('input', syncModuleFromSlider);
+  moduleInput.addEventListener('change', syncModuleFromInput);
+
+  /* tolerance mode */
+  document.querySelectorAll('input[name="tolmode"]').forEach(r=>{
+    r.addEventListener('change', ()=>{
+      if(getTolMode()==='percent'){ tolPercentWrap.style.display='flex'; tolAbsWrap.style.display='none'; }
+      else{ tolPercentWrap.style.display='none'; tolAbsWrap.style.display='flex'; }
+      autoMaybeAnalyse();
+    });
+  });
+  tolPercent.addEventListener('change', ()=>{ tolPercent.value = String(clamp(+tolPercent.value||0,0,50)); autoMaybeAnalyse(); });
+  tolAbs.addEventListener('change', ()=>{ tolAbs.value = String(clamp(+tolAbs.value||0,0,1000)); autoMaybeAnalyse(); });
+
+  /* auto mode */
+  const autoRadios = [...document.querySelectorAll('input[name="autorun"]')];
+  function autoOn(){ return document.querySelector('input[name="autorun"]:checked').value==='on'; }
+  autoRadios.forEach(r=> r.addEventListener('change', ()=> autoMaybeAnalyse()));
+  analyzeBtn.addEventListener('click', analyse);
+  exportBtn.addEventListener('click', doExport);
+
+  /* critical list */
+  addRowBtn.addEventListener('click', ()=>{ addRow(nextItemName(), ''); autoMaybeAnalyse(); });
+  seedDemoBtn.addEventListener('click', seedDemo);
+
+  function nextItemName(){
+    const used = new Set(getRows().map(r=>r.name));
+    let i=1; while(used.has(`Item ${i}`)) i++;
+    return `Item ${i}`;
+  }
+  function ensureUniqueName(suggest){
+    const used = new Set(getRows().map(r=>r.name));
+    if(!used.has(suggest)) return suggest;
+    let n=2;
+    while(used.has(`${suggest} (${n})`)) n++;
+    return `${suggest} (${n})`;
+  }
+  function addRow(name,value){
+    const row = document.createElement('div');
+    row.className='cd-item';
+    const unique = ensureUniqueName((name??'').trim() || nextItemName());
+    row.innerHTML = `
+      <input type="text" placeholder="Name" value="${escapeHTML(unique)}" aria-label="Name">
+      <input type="number" min="0" step="0.01" placeholder="Value" value="${value??''}" aria-label="Value">
+      <button class="iconbtn" title="Duplicate"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>
+      <button class="iconbtn" title="Remove"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
+      <button class="iconbtn drag-handle" title="Drag to reorder"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg></button>
+    `;
+    const [nameEl, valEl, dupBtn, delBtn, dragBtn] = row.children;
+    nameEl.addEventListener('blur', ()=>{
+      const trimmed = (nameEl.value||'').trim() || nextItemName();
+      nameEl.value = escapeHTML(resolveNameConflict(row, trimmed));
+      autoMaybeAnalyse();
+    });
+    valEl.addEventListener('change', ()=>{ if(+valEl.value<0||!isFinite(+valEl.value)) valEl.value='0'; autoMaybeAnalyse(); });
+    [nameEl,valEl].forEach(el=> el.addEventListener('input', throttle(autoMaybeAnalyse,150)));
+    dupBtn.addEventListener('click', ()=>{
+      addRow(ensureUniqueName(nameEl.value), valEl.value);
+      autoMaybeAnalyse();
+    });
+    delBtn.addEventListener('click', ()=>{ row.remove(); autoMaybeAnalyse(); });
+    
+    // Drag functionality
+    let draggedElement = null;
+    
+    dragBtn.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      draggedElement = row;
+      row.draggable = true;
+      row.classList.add('dragging');
+    });
+    
+    row.addEventListener('dragstart', (e)=>{
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', '');
+    });
+    
+    row.addEventListener('dragend', (e)=>{
+      row.classList.remove('dragging');
+      row.draggable = false;
+      draggedElement = null;
+    });
+    
+    row.addEventListener('dragover', (e)=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    
+    row.addEventListener('drop', (e)=>{
+      e.preventDefault();
+      if(draggedElement && draggedElement !== row){
+        const rect = row.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        
+        if(e.clientY < midpoint){
+          cdList.insertBefore(draggedElement, row);
+        } else {
+          cdList.insertBefore(draggedElement, row.nextSibling);
+        }
+        autoMaybeAnalyse();
+      }
+    });
+    cdList.appendChild(row);
+    return row;
+  }
+  function resolveNameConflict(thisRow, proposed){
+    const others = getRows().filter(r=> r.el !== thisRow).map(r=>r.name);
+    if(!others.includes(proposed)) return proposed;
+    let n=2; while(others.includes(`${proposed} (${n})`)) n++;
+    return `${proposed} (${n})`;
+  }
+  function getRows(){
+    return [...cdList.querySelectorAll('.cd-item')].map(el=>{
+      const [nameEl,valEl] = el.children;
+      return { el, name: (nameEl.value||'').trim(), value: +valEl.value };
+    }).filter(r=> r.name.length>0 && isFinite(r.value));
+  }
+
+  /* seed */
+  function seedDemo(){
+    cdList.innerHTML='';
+    [['Door width',910],['Bedroom length',3600],['Bathroom clear width',1200],['Corridor',1050],['Kitchen carcass width',600],['Module bay',3000],['Window unit',1500],['Tile grid',300],['Facade panel',1200],['Ramp segment',900]]
+      .forEach(([n,v])=> addRow(n,v));
+    autoMaybeAnalyse();
+  }
+
+  /* defaults */
+  if(cdList.children.length===0){ addRow('Item 1',900); addRow('Item 2',1200); }
+
+  /* compute */
+  function currentModule(){ return +moduleInput.value||0 }
+  function getTolMode(){ return document.querySelector('input[name="tolmode"]:checked').value; }
+  function toleranceAbs(){
+    const M=currentModule();
+    return getTolMode()==='percent' ? M*((+tolPercent.value||0)/100) : (+tolAbs.value||0);
+  }
+
+  function analyse(){
+    const rows = getRows();
+    const M = currentModule();
+    const tol = toleranceAbs();
+
+    echoInputs(M, tol);
+
+    if(M<=0){ tableWrap.innerHTML=''; summaryStats.textContent='Base module must be greater than 0.'; recommendations.textContent=''; paintHeader({n:rows.length,wRate:0,full:0,half:0,meanNonFit:0}); return; }
+
+    const results = rows.map(r=>{
+      const D = r.value;
+
+      /* full-fit check */
+      const k = Math.round(D/M);
+      const nearest = k*M;
+      const resid = D - nearest;
+      const fits = Math.abs(resid) <= tol;
+
+      /* half-fit (true halves only; odd half-steps) */
+      const k2 = Math.round(D/(M/2));          // step size = M/2
+      const nearestHalf = k2*(M/2);
+      const halfOnly = !fits && (k2 % 2 !== 0) && Math.abs(D - nearestHalf) <= tol;
+
+      /* shifts relative to full multiples */
+      const k_floor = Math.floor(D/M), k_ceil = Math.ceil(D/M);
+      const downMultiple = k_floor*M, upMultiple = k_ceil*M;
+      const shiftDownNeeded = Math.max(0, (D - downMultiple) - tol);
+      const shiftUpNeeded   = Math.max(0, (upMultiple - D) - tol);
+      const minShift = (fits||halfOnly) ? 0 : Math.min(shiftDownNeeded, shiftUpNeeded);
+
+      /* label + score */
+      const fitLabel = fits ? 'FULL FIT' : (halfOnly ? 'HALF FIT' : 'NO FIT');
+      const score = fits ? 1 : (halfOnly ? 0.5 : 0);
+
+      const suggestion = (fits||halfOnly)
+        ? (fits ? 'No adjustment needed' : `Half-step OK at ${fmt(nearestHalf)} (M/2)`)
+        : (shiftDownNeeded <= shiftUpNeeded
+            ? `Reduce by ${fmt(shiftDownNeeded)} to reach ${fmt(downMultiple)} (k=${k_floor})`
+            : `Increase by ${fmt(shiftUpNeeded)} to reach ${fmt(upMultiple)} (k=${k_ceil})`);
+
+      return {
+        name:r.name, D, M, tol,
+        k, nearest, resid,
+        k_floor, k_ceil,
+        shiftDownNeeded, shiftUpNeeded, minShift,
+        fits, halfOnly, score, suggestion
+      };
+    });
+
+    renderTable(results);
+
+    const stats = computeStats(results, M, tol);
+    renderSummary(stats, M, tol);
+    paintHeader({
+      n: results.length,
+      wRate: stats.weightedFitRate,
+      full: stats.fullCount,
+      half: stats.halfCount,
+      meanNonFit: stats.meanMinShiftNonFit
+    });
+
+    const recs = computeRecommendations(results, M, tol);
+    renderRecommendations(recs);
+  }
+
+  function echoInputs(M, tol){
+    moduleEcho.textContent = `module: ${M}`;
+    if(getTolMode()==='percent'){
+      tolEcho.textContent = `tolerance:
+  mode: percent_of_module
+  value_percent: ${(+tolPercent.value||0).toFixed(2)}
+  value_absolute: ${fmt(tol)}`;
+    }else{
+      tolEcho.textContent = `tolerance:
+  mode: absolute
+  value_absolute: ${fmt(tol)}`;
+    }
+  }
+
+  function renderTable(results){
+    if(!results.length){ tableWrap.innerHTML='<div class="hint">Add some critical dimensions.</div>'; return; }
+    const rows = results.map(r=>`
+      <tr>
+        <td class="mono">${escapeHTML(r.name)}</td>
+        <td class="num mono">${fmt(r.D)}</td>
+        <td class="num mono">${r.k}</td>
+        <td class="num mono">${fmt(r.nearest)}</td>
+        <td class="num mono">${fmt(r.resid)}</td>
+        <td class="${r.fits?'fit-yes':(r.halfOnly?'fit-half':'fit-no')}">${r.fits?'FULL FIT':(r.halfOnly?'HALF FIT':'NO FIT')}</td>
+        <td class="num mono">${fmt(r.shiftDownNeeded)}</td>
+        <td class="num mono">${fmt(r.shiftUpNeeded)}</td>
+        <td class="num mono">${r.score.toFixed(1)}</td>
+        <td>${escapeHTML(r.suggestion)}</td>
+      </tr>
+    `).join('');
+
+    tableWrap.innerHTML = `
+      <table aria-label="Individual fit table">
+        <colgroup>
+          <col class="name"><col class="dim"><col class="k"><col class="km"><col class="res"><col class="fit">
+          <col class="sdown"><col class="sup"><col class="score"><col class="suggestion">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="num">Dimension</th>
+            <th class="num">k</th>
+            <th class="num">k·M</th>
+            <th class="num">Residual</th>
+            <th>Fit</th>
+            <th class="num">Shift down</th>
+            <th class="num">Shift up</th>
+            <th class="num">Score</th>
+            <th>Suggestion</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function computeStats(results, M, tol){
+    const n = results.length||1;
+    const full = results.filter(r=> r.fits).length;
+    const half = results.filter(r=> r.halfOnly).length;
+    const weightedFitRate = (full + 0.5*half)/n;
+
+    const absRes = results.map(r=> Math.abs(r.resid));
+    const nonFitShift = results.filter(r=> !r.fits && !r.halfOnly).map(r=> r.minShift);
+
+    const quant = (arr,q)=>{
+      if(!arr.length) return 0;
+      const s=[...arr].sort((a,b)=>a-b);
+      const pos=(s.length-1)*q, b=Math.floor(pos), r=pos-b;
+      return s[b+1]!==undefined ? s[b]+r*(s[b+1]-s[b]) : s[b];
+    };
+
+    return {
+      n,
+      fullCount: full,
+      halfCount: half,
+      weightedFitRate,
+      meanAbsResidual: mean(absRes),
+      p50AbsResidual: quant(absRes,.5),
+      p90AbsResidual: quant(absRes,.9),
+      meanMinShiftNonFit: mean(nonFitShift),
+      p90MinShiftNonFit: quant(nonFitShift,.9),
+      worstMinShiftNonFit: nonFitShift.length ? Math.max(...nonFitShift) : 0
+    };
+  }
+
+  function renderSummary(s, M, tol){
+    summaryStats.textContent =
+`count: ${s.n}
+full_fit_count: ${s.fullCount}
+half_fit_count: ${s.halfCount}
+weighted_fit_rate: ${pct(s.weightedFitRate)}
+module: ${M}
+tolerance_abs: ${fmt(tol)}
+mean_abs_residual: ${fmt(s.meanAbsResidual)}
+p50_abs_residual: ${fmt(s.p50AbsResidual)}
+p90_abs_residual: ${fmt(s.p90AbsResidual)}
+mean_min_shift_nonfit: ${fmt(s.meanMinShiftNonFit)}
+p90_min_shift_nonfit: ${fmt(s.p90MinShiftNonFit)}
+worst_min_shift_nonfit: ${fmt(s.worstMinShiftNonFit)}`;
+  }
+
+  function computeRecommendations(results, M, tol){
+    const base = computeStats(results, M, tol);
+    const candidateSet = new Set(anchors.concat(range(Math.round(M*0.8/STEP)*STEP, Math.round(M*1.2/STEP)*STEP, STEP)));
+    const evals = [];
+    for(const cand of candidateSet){
+      if(cand<=0 || cand>1000) continue;
+      const r2 = results.map(o=>{
+        const D=o.D;
+        const k=Math.round(D/cand);
+        const resid=D-k*cand;
+        const fits=Math.abs(resid)<=tol;
+
+        const k2 = Math.round(D/(cand/2));
+        const halfOnly = !fits && (k2%2!==0) && Math.abs(D - k2*(cand/2)) <= tol;
+
+        const kf=Math.floor(D/cand), kc=Math.ceil(D/cand);
+        const sdn=Math.max(0,(D-kf*cand)-tol);
+        const sup=Math.max(0,(kc*cand-D)-tol);
+        const minShift=(fits||halfOnly)?0:Math.min(sdn,sup);
+        return {fits,halfOnly,minShift,resid};
+      });
+      const s = computeStats(r2, cand, tol);
+      evals.push({M:cand,anchor:anchors.includes(cand),...s});
+    }
+    evals.sort((a,b)=>{
+      if(b.weightedFitRate!==a.weightedFitRate) return b.weightedFitRate-a.weightedFitRate;
+      if(a.meanMinShiftNonFit!==b.meanMinShiftNonFit) return a.meanMinShiftNonFit-b.meanMinShiftNonFit;
+      const da=Math.abs(a.M-M), db=Math.abs(b.M-M);
+      if(da!==db) return da-db;
+      if(a.anchor!==b.anchor) return a.anchor?-1:1;
+      return a.M-b.M;
+    });
+    return {base, top3: evals.slice(0,3), currentM:M, tolAbs:tol};
+  }
+
+  function renderRecommendations(r){
+    const s=r.base;
+    const lines=[];
+    lines.push(`If you keep the current module (${r.currentM}):`);
+    lines.push(`- Weighted fit rate: ${pct(s.weightedFitRate)} (full ${s.fullCount}, half ${s.halfCount}).`);
+    lines.push(`- Typical non-fit adjustment: mean ${fmt(s.meanMinShiftNonFit)}, 90th ${fmt(s.p90MinShiftNonFit)}, worst ${fmt(s.worstMinShiftNonFit)}.`);
+    if(r.top3.length){
+      lines.push(`If you change the module:`);
+      r.top3.forEach((c,i)=>{
+        lines.push(`- Candidate ${i+1}: ${c.M}${c.anchor?' (anchor)':''} — weighted fit ${pct(c.weightedFitRate)}, mean non-fit shift ${fmt(c.meanMinShiftNonFit)}.`);
+      });
+      const best=r.top3[0];
+      if(best.M!==r.currentM){
+        const d=best.weightedFitRate - s.weightedFitRate;
+        lines.push(`- Recommended: ${best.M}${best.anchor?' (anchor)':''} — ${d>0?`improves weighted fit by ${pct(d)} relative`:'similar fit'} with comparable or lower adjustment burden.`);
+      }
+    }
+    recommendations.textContent = lines.join('\n');
+  }
+
+  function paintHeader({n,wRate,full,half,meanNonFit}){
+    const cls = wRate>=0.9?'b-ok':(wRate>=0.7?'b-warn':'b-err');
+    summaryHeader.innerHTML = `
+      <span id="b1" class="badge ${cls}">Weighted fit: ${pct(wRate)}</span>
+      <span id="b2" class="badge">N = ${n}</span>
+      <span id="b3" class="badge b-warn">Mean non-fit shift: ${fmt(meanNonFit)}</span>
+      <span id="b4" class="badge">Full: ${full} | Half: ${half}</span>
+    `;
+  }
+
+  /* export */
+  function doExport(){
+    const yaml = buildYAML();
+    const md = buildMarkdown();
+    const blob = new Blob([`${yaml}\n\n---\n\n${md}\n`], {type:'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=`module_fit_${new Date().toISOString().replace(/[:.]/g,'-')}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  function buildYAML(){
+    const M=currentModule(), tol=toleranceAbs(), mode=getTolMode();
+    const rows=getRows();
+    const lines=[];
+    lines.push('inputs:');
+    lines.push(`  module: ${M}`);
+    lines.push('  tolerance:');
+    if(mode==='percent'){
+      lines.push('    mode: percent_of_module');
+      lines.push(`    value_percent: ${(+tolPercent.value||0).toFixed(2)}`);
+      lines.push(`    value_absolute: ${fmt(tol)}`);
+    }else{
+      lines.push('    mode: absolute');
+      lines.push(`    value_absolute: ${fmt(tol)}`);
+    }
+    lines.push('  critical_dimensions:');
+    rows.forEach(r=>{
+      lines.push(`    - name: "${escapeYAML(r.name)}"`);
+      lines.push(`      value: ${r.value}`);
+    });
+    return lines.join('\n');
+  }
+  function buildMarkdown(){
+    if(tableWrap.innerHTML.trim()==='') analyse();
+    const hdr = `Specified module\n\n\`\`\`\n${moduleEcho.textContent}\n\`\`\`\n\nSpecified tolerance\n\n\`\`\`\n${tolEcho.textContent}\n\`\`\`\n`;
+    const table = htmlTableToMarkdown(tableWrap.querySelector('table'));
+    const stats = `Summary of Module Fit Analyses\n\n\`\`\`\n${summaryStats.textContent}\n\`\`\`\n\nRecommendations\n\n\`\`\`\n${recommendations.textContent}\n\`\`\`\n`;
+    return `${hdr}\nIndividual Module Fit Analyses\n\n${table}\n\n${stats}`;
+  }
+  function htmlTableToMarkdown(tbl){
+    if(!tbl) return '_No items._';
+    const ths=[...tbl.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+    const rows=[...tbl.querySelectorAll('tbody tr')].map(tr=>[...tr.children].map(td=>td.textContent.trim()));
+    const head=`| ${ths.join(' | ')} |`;
+    const sep=`| ${ths.map(()=> '---').join(' | ')} |`;
+    const body=rows.map(r=>`| ${r.join(' | ')} |`).join('\n');
+    return `${head}\n${sep}\n${body}`;
+  }
+
+  /* helpers */
+  function mean(a){ return a.length? a.reduce((x,y)=>x+y,0)/a.length : 0 }
+  function fmt(x){ if(!isFinite(x)) return '0'; const v=Math.round(+x*1000)/1000; return String(v).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,''); }
+  function pct(x){ return (Math.round(x*1000)/10).toFixed(1)+'%'; }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+  function escapeHTML(s){ return (s??'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+  function escapeYAML(s){ return String(s??'').replace(/"/g,'\\"'); }
+  function throttle(fn, wait){ let t=0; return (...args)=>{ const n=Date.now(); if(n-t>wait){ t=n; fn.apply(null,args); } }; }
+  function range(a,b,step){ const out=[]; for(let x=a; x<=b; x+=step) out.push(x); return out; }
+
+  function autoMaybeAnalyse(){
+    const rows=getRows();
+    if(rows.length>HEAVY_THRESHOLD && autoOn()){
+      document.querySelector('input[name="autorun"][value="off"]').checked=true;
+    }
+    if(autoOn()) analyse();
+    else paintHeader({n:rows.length,wRate:0,full:0,half:0,meanNonFit:0});
+  }
+
+  /* first paint */
+  autoMaybeAnalyse();
+})();
+</script>
+</body>
+</html>
