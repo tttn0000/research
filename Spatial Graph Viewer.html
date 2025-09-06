@@ -2,68 +2,88 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Spatial Graph Viewer — Normal & Linear (Exterior→Interior)</title>
+<title>Spatial Graph Viewer — Multi-JSON, Normal & Linear (Exterior→Interior)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!--
+Key fixes and improvements (embedded summary):
+- Edges missing in exports: all link strokes are now set inline (stroke, stroke-width, stroke-opacity). Exports no longer rely on external CSS.
+- Normal-mode physics restored: D3 force simulation runs by default, with a Physics On/Off toggle. Cached layouts seed the sim but do not disable it unless Physics is Off.
+- PDF export now produces a single multi-page file containing every dataset in BOTH Normal and Linear modes (two pages per dataset). HUD/toolbars are auto-hidden only for the export render pass.
+- SVG and PNG exports fixed to include edges and match on-screen visuals.
+- Multi-JSON loader: supports a file with multiple JSON objects or multiple files; each can contain a single dataset, an array, or an object-of-objects; valid entries are consolidated and added.
+- Cycling controls and labels appear in both the dataset list panel and the HUD; linear/normal mode is switchable per preview and respected in exports.
+- Tool panels (Filter) implement fold-off behaviour: click-away, Escape key, and an explicit close button.
+- Pre-render & memory: layouts are cached per dataset and per mode; cycling is instant without recomputing. Normal-mode physics will still animate unless toggled Off.
+-->
+
 <style>
   :root{
-    --bg:#f8fafc;          /* canvas background */
-    --panel:#ffffff;       /* UI background */
-    --ink:#0f172a;         /* UI text */
-    --muted:#64748b;       /* secondary text */
-    --accent:#2563eb;      /* controls accent */
-    --accent-2:#06b6d4;    /* secondary accent */
+    --bg:#f8fafc;
+    --panel:#ffffff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --accent:#2563eb;
+    --accent-2:#06b6d4;
     --warn:#ea580c;
     --good:#10b981;
 
-    --edge:#94a3b8;        /* edge colour (base) */
-    --edge-soft:#cbd5e1;   /* edge faint */
-    --guide:#cbd5e1;       /* dotted guides in linear mode */
-
-    --node-label:#0b1224;  /* label text on light pills */
-    --tooltip:#0b1224;     /* tooltip text */
-    --tooltip-bg:#ffffff;  /* tooltip bg */
+    --edge:#94a3b8;
+    --edge-soft:#cbd5e1;
+    --guide:#cbd5e1;
   }
 
   html,body{height:100%;margin:0;background:var(--bg);font-family: ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
   *{box-sizing:border-box}
 
-  .wrap{display:grid;grid-template-columns:380px 1fr;gap:14px;height:100%}
+  .wrap{display:grid;grid-template-columns:420px 1fr;gap:14px;height:100%}
   .left{
     background:linear-gradient(180deg,var(--panel),#f3f4f6 70%, #eef2f7);
-    color:var(--ink);padding:14px 14px 10px 16px;display:flex;flex-direction:column
+    color:var(--ink);padding:14px 14px 10px 16px;display:flex;flex-direction:column;overflow:auto
   }
   h1{margin:0 0 10px 0;font-size:18px;letter-spacing:.2px;color:#1f2937}
-  .controls{display:grid;grid-template-columns:1fr;gap:10px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .row label{font-size:12px;color:var(--muted)}
-  select,button,.toggle,textarea{
-    border:1px solid #e2e8f0;background:#ffffff;color:var(--ink);
+
+  .ds-panel{border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:10px;margin-bottom:10px}
+  .ds-panel h3{margin:0 0 8px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
+  .ds-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+  button,select,textarea,input[type="text"],.toggle{
+    border:1px solid #e2e8f0;background:#fff;color:var(--ink);
     border-radius:8px;padding:8px 10px;font-size:13px;outline:none
   }
-  select,button{cursor:pointer}
-  .toggle{display:flex;gap:8px;padding:6px 8px}
-  .toggle input{margin-right:6px}
+  button{cursor:pointer}
   button.primary{background:#e5edff;border-color:#bfdbfe}
   button.primary:hover{background:#dbeafe}
   button.ghost{background:#ffffff;border-color:#e2e8f0}
-  
+  .tight{padding:4px 8px;font-size:12px}
+
+  .ds-cycle{display:flex;align-items:center;gap:8px;margin:8px 0}
+  .ds-cycle .idx{font-size:12px;color:#334155}
+  .ds-list{max-height:160px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px}
+  .ds-item{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #f1f5f9}
+  .ds-item:last-child{border-bottom:none}
+  .ds-item .badge{font-size:11px;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:1px 8px}
+  .ds-item .addr{font-size:12px;color:#0f172a;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+  .ds-item button{font-size:11px;padding:4px 8px}
+  .ds-item.active{background:#f8fafc}
+
+  .controls{display:grid;grid-template-columns:1fr;gap:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row label{font-size:12px;color:var(--muted)}
+
   .view-mode-buttons{display:flex;gap:4px}
   .view-mode-btn{
     flex:1;padding:6px 12px;font-size:12px;border-radius:6px;
-    background:#ffffff;border:1px solid #e2e8f0;color:var(--muted);
-    transition:all 0.2s ease
+    background:#ffffff;border:1px solid #e2e8f0;color:#636e7b;
   }
-  .view-mode-btn:hover{background:#f8fafc;color:var(--ink)}
-  .view-mode-btn.active{
-    background:#e5edff;border-color:#bfdbfe;color:#1e3a8a;font-weight:600
-  }
-  .note{font-size:12px;color:var(--muted)}
-  .error{color:#fecaca;background:#7f1d1d22;border:1px solid #fecaca44;padding:8px;border-radius:8px}
+  .view-mode-btn.active{background:#e5edff;border-color:#bfdbfe;color:#1e3a8a;font-weight:600}
+
+  .error{color:#7f1d1d;background:#fecaca33;border:1px solid #fecaca66;padding:8px;border-radius:8px}
   textarea{
-    width:100%;min-height:160px;max-height:34vh;resize:vertical;line-height:1.35;
+    width:100%;min-height:120px;max-height:34vh;resize:vertical;line-height:1.35;
     font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
     font-size:12px
   }
+  .note{font-size:12px;color:#64748b}
 
   .meta{margin-top:8px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff}
   .meta h3{margin:0 0 6px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
@@ -72,7 +92,7 @@
   .legend{margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:8px}
   .legend h3{margin:0 0 6px 0;font-size:12px;color:#1f2937;text-transform:uppercase;letter-spacing:.1em}
   .legend .items{display:grid;grid-template-columns:repeat(2, minmax(0,1fr));gap:6px}
-  .legend .chip{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .legend .chip{display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7280}
   .legend .sw{width:14px;height:14px;border-radius:50%;border:1px solid #e2e8f0}
 
   .rooms{margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#ffffff;padding:8px}
@@ -84,12 +104,15 @@
   svg{width:100%;height:100%}
   .hud{
     position:absolute;left:10px;top:10px;background:#ffffffcc;border:1px solid #e2e8f0;
-    color:var(--ink);padding:6px 8px;border-radius:8px;font-size:12px;backdrop-filter: blur(3px)
+    color:var(--ink);padding:6px 8px;border-radius:8px;font-size:12px;backdrop-filter: blur(3px);
+    display:flex;gap:10px;align-items:center
   }
-  .hud b{color:#1f2937}
-  .toolbar{
-    position:absolute;right:10px;top:10px;display:flex;gap:8px
-  }
+  .hud .ds-mini{display:flex;align-items:center;gap:6px}
+  .hud .ds-mini .lbl{max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hud button{font-size:11px;padding:4px 8px}
+
+  .toolbar{position:absolute;right:10px;top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .toolbar .toggle-btn{min-width:92px}
 
   .filter-panel{
     position:absolute;right:160px;top:10px;background:#ffffff;border:1px solid #e2e8f0;
@@ -102,24 +125,17 @@
   .filter-panel .modes{display:flex;gap:10px;font-size:12px;color:#334155;margin:6px 0}
   .filter-panel .actions{display:flex;gap:8px;justify-content:flex-end}
   .filter-panel .actions button{padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc}
+  .filter-close{position:absolute;right:6px;top:6px;border:none;background:transparent;font-size:14px;cursor:pointer;color:#475569}
 
-  /* Nodes & links */
-  .link{stroke:var(--edge);stroke-opacity:.75}
-  .link.backbone{stroke:var(--edge);stroke-opacity:.95;stroke-width:2.2}
-  .link.faint{stroke:var(--edge-soft);stroke-opacity:.9}
+  /* .link styles removed - exports use inline styles */
   .node{cursor:grab}
   .node:active{cursor:grabbing}
   .node .node-shape{filter:url(#drop)}
-  .node text{
-    font-size:12px;fill:#0f172a;paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round
-  }
   .level-guide{stroke:var(--guide);stroke-dasharray:3 5;stroke-width:.8;opacity:.7}
 
-  /* Tooltip */
   .tip{
     position:absolute;pointer-events:none;z-index:5;transform:translate(-50%, calc(-100% - 8px));
-    background:var(--tooltip-bg);color:var(--tooltip);
-    border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;min-width:220px
+    background:#ffffff;color:#0b1224;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;min-width:220px
   }
   .tip h4{margin:0 0 6px 0;font-size:14px}
   .tip .sub{font-size:12px;color:#374151;margin:0 0 8px 0}
@@ -127,12 +143,14 @@
   .tip .kv div{color:#111827}
   .tip .muted{color:#6b7280}
 
-  /* Small helpers */
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #e5e7eb}
   .hidden{display:none}
-
-  /* Smaller font for exterior roots list */
   #rootSel{font-size:11px}
+
+  /* Hide UI on export snapshots only */
+  body.exporting .hud,
+  body.exporting .toolbar,
+  body.exporting .filter-panel{display:none!important}
 </style>
 </head>
 <body>
@@ -140,19 +158,33 @@
   <div class="left">
     <h1>Spatial Graph Viewer</h1>
 
-    <div class="controls">
-      <div class="row">
-        <label>View</label>
-        <div class="view-mode-buttons">
-          <button id="normalMode" class="view-mode-btn active" data-mode="normal" title="Normal graph (all adjacencies)">Normal</button>
-          <button id="linearMode" class="view-mode-btn" data-mode="linear" title="Linear graph (exterior → interior)">Linear</button>
-        </div>
+    <div class="ds-panel">
+      <h3>Datasets</h3>
+      - Load one or more JSON files or paste JSON below. Arrays and object-of-objects are supported; valid items with a spaces_list are extracted and consolidated.
+      <div class="ds-actions">
+        <button id="loadFilesBtn" class="primary" title="Load one or more JSON files">Load JSONs</button>
+        <input id="fileInput" type="file" accept=".json,application/json" multiple class="hidden" />
+        <button id="addFromTextBtn" class="ghost" title="Parse textarea and add all valid objects">Add from textarea</button>
+        <button id="replaceCurrentBtn" class="ghost" title="Replace current dataset with textarea content">Replace current</button>
+        <button id="clearAllBtn" class="ghost" title="Remove all datasets">Clear all</button>
       </div>
+
+      <div class="ds-cycle">
+        <button id="dsPrev" class="tight" title="Previous dataset">◀</button>
+        <div class="idx"><span id="dsIdx">0</span>/<span id="dsCount">0</span></div>
+        <div class="idx" style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b id="dsAddr">—</b></div>
+        <button id="dsNext" class="tight" title="Next dataset">▶</button>
+      </div>
+
+      <div class="ds-list" id="dsList"></div>
+    </div>
+
+    <div class="controls">
+      <!-- View mode buttons moved to HUD -->
 
       <div class="row">
         <label for="rootSel">Exterior roots</label>
-        <select id="rootSel" multiple size="4" title="Exterior nodes used as sources in linear view">
-        </select>
+        <select id="rootSel" multiple size="4" title="Exterior nodes used as sources in linear view"></select>
       </div>
 
       <div class="row">
@@ -164,8 +196,8 @@
         <button id="renderBtn" class="primary hidden" title="Render preview">Render preview</button>
       </div>
 
-      <textarea id="jsonInput" spellcheck="false" placeholder="Paste the spatial JSON here…"></textarea>
-      <div class="note">Tip: Ctrl/Cmd+Enter to render. Supports <code>//</code> comments and trailing commas.</div>
+      <textarea id="jsonInput" spellcheck="false" placeholder="Paste JSON here. It may contain one object, an array of objects, or an object-of-objects. Comments // and /* */ allowed."></textarea>
+      <div class="note">Ctrl/Cmd+Enter to parse textarea. Loaded datasets are cached; cycling does not recompute layouts.</div>
       <div id="errorBox" class="error hidden"></div>
     </div>
 
@@ -185,12 +217,31 @@
   </div>
 
   <div class="right">
-    <div class="hud" id="hud"></div>
+    <div class="hud" id="hud">
+      <div><b>Mode:</b> <span id="hudMode">normal</span></div>
+      <div class="ds-mini">
+        <button id="hudPrev" class="tight" title="Previous dataset">◀</button>
+        <div class="lbl" id="hudAddr">—</div>
+        <button id="hudNext" class="tight" title="Next dataset">▶</button>
+      </div>
+      <div class="view-mode-buttons">
+        <button id="normalModeHud" class="view-mode-btn active" data-mode="normal" title="Normal graph (all adjacencies)">Normal</button>
+        <button id="linearModeHud" class="view-mode-btn" data-mode="linear" title="Linear graph (exterior → interior)">Linear</button>
+      </div>
+      <div id="hudStats"></div>
+    </div>
+
     <div class="toolbar">
       <button id="filterBtn" class="ghost" title="Filter graph">Filter</button>
+      <button id="exportDataBtn" class="ghost" title="Export graph data (all datasets) as JSON">Export data</button>
+      <button id="exportSvgBtn" class="ghost" title="Export current view as SVG">SVG</button>
+      <button id="exportPngBtn" class="ghost" title="Export current view as PNG">PNG</button>
+      <button id="exportPdfBtn" class="ghost" title="Export ALL datasets (Normal+Linear) as a single PDF">PDF (All)</button>
       <button id="reset" class="ghost" title="Reset zoom">Reset</button>
     </div>
+
     <div id="filterPanel" class="filter-panel" aria-label="Filter panel">
+      <button class="filter-close" id="filterClose" title="Close">×</button>
       <h4>Filter</h4>
       <div class="row"><label>Category</label><select id="catSel"><option value="">Any</option></select></div>
       <div class="row"><label>Label contains</label><input id="labelInp" type="text" placeholder="substring"/></div>
@@ -198,7 +249,9 @@
       <div class="row"><label>Area max</label><input id="areaMax" type="number" step="0.1"/></div>
       <div class="row"><label>Dim min (mm)</label><input id="dimMin" type="number" step="1"/></div>
       <div class="row"><label>Dim max (mm)</label><input id="dimMax" type="number" step="1"/></div>
-      <div class="row"><label>Has dimensions</label><select id="dimsSel"><option value="any">Any</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+      <div class="row"><label>Has dimensions</label>
+        <select id="dimsSel"><option value="any">Any</option><option value="yes">Yes</option><option value="no">No</option></select>
+      </div>
       <div class="modes">
         <label><input type="radio" name="filterMode" value="fade" checked/> Fade</label>
         <label><input type="radio" name="filterMode" value="erase"/> Erase</label>
@@ -208,14 +261,12 @@
         <button id="filterApply">Apply</button>
       </div>
     </div>
+
     <svg id="viz" viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid meet" aria-label="Graph canvas">
       <defs>
         <filter id="drop" x="-50%" y="-50%" width="200%" height="200%">
           <feDropShadow dx="0" dy="1.2" stdDeviation="2" flood-color="#000" flood-opacity=".45"/>
         </filter>
-        <marker id="arrow" viewBox="0 0 10 10" refX="14" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"></path>
-        </marker>
       </defs>
       <g id="zoomLayer">
         <g id="guides"></g>
@@ -230,20 +281,49 @@
 <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 <script>
 (function(){
+  /* ---------- Constants & DOM ---------- */
   const EXT_SET = new Set(["EXT_STREET","EXT_DRIVEWAY","EXT_YARD","EXT_GARDEN"]);
+  const LABEL_WRAP_WIDTH_LINEAR = 120;
+  const LABEL_LINE_HEIGHT_FACTOR = 1.25;
+
   const inputEl   = document.getElementById('jsonInput');
+  const fileInput = document.getElementById('fileInput');
+  const loadFilesBtn = document.getElementById('loadFilesBtn');
+  const addFromTextBtn = document.getElementById('addFromTextBtn');
+  const replaceCurrentBtn = document.getElementById('replaceCurrentBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
   const errorBox  = document.getElementById('errorBox');
-  const normalMode = document.getElementById('normalMode');
-  const linearMode = document.getElementById('linearMode');
+  const normalMode = document.getElementById('normalMode'); // Legacy reference (null)
+  const linearMode = document.getElementById('linearMode'); // Legacy reference (null)
+  const normalModeHud = document.getElementById('normalModeHud');
+  const linearModeHud = document.getElementById('linearModeHud');
+  const hudMode = document.getElementById('hudMode');
   const rootSel   = document.getElementById('rootSel');
   const autoBox   = document.getElementById('auto');
   const renderBtn = document.getElementById('renderBtn');
   const legendEl  = document.getElementById('legendItems');
   const metaKv    = document.getElementById('metaKv');
-  const hud       = document.getElementById('hud');
-  
+  const roomsRows = document.getElementById('roomsRows');
+  const hudStats  = document.getElementById('hudStats');
+
+  const dsPrev = document.getElementById('dsPrev');
+  const dsNext = document.getElementById('dsNext');
+  const hudPrev = document.getElementById('hudPrev');
+  const hudNext = document.getElementById('hudNext');
+  const dsIdxEl = document.getElementById('dsIdx');
+  const dsCountEl = document.getElementById('dsCount');
+  const dsAddrEl = document.getElementById('dsAddr');
+  const hudAddrEl = document.getElementById('hudAddr');
+  const dsListEl = document.getElementById('dsList');
+
+  const exportDataBtn = document.getElementById('exportDataBtn');
+  const exportSvgBtn = document.getElementById('exportSvgBtn');
+  const exportPngBtn = document.getElementById('exportPngBtn');
+  const exportPdfBtn = document.getElementById('exportPdfBtn');
   const filterBtn = document.getElementById('filterBtn');
   const filterPanel = document.getElementById('filterPanel');
+  const filterClose = document.getElementById('filterClose');
   const catSel   = document.getElementById('catSel');
   const labelInp = document.getElementById('labelInp');
   const areaMin  = document.getElementById('areaMin');
@@ -254,6 +334,8 @@
   const filterApply = document.getElementById('filterApply');
   const filterClear = document.getElementById('filterClear');
   const resetBtn  = document.getElementById('reset');
+  // Physics toggle button removed - physics always enabled
+
   const svg = d3.select('#viz');
   const zoomLayer = d3.select('#zoomLayer');
   const guides = d3.select('#guides');
@@ -261,98 +343,29 @@
   const nodeLayer = d3.select('#nodes');
   const tip = document.getElementById('tooltip');
 
-  // Label wrapping configuration (linear mode)
-  const LABEL_WRAP_WIDTH_LINEAR = 120; // px; keep within inter-column spacing to avoid overlaps
-  const LABEL_LINE_HEIGHT_FACTOR = 1.25; // relative to computed font-size
-
   let zoomBehavior = d3.zoom().scaleExtent([0.25, 4]).on('zoom', (ev)=> zoomLayer.attr('transform', ev.transform));
   svg.call(zoomBehavior);
 
-  // Debounce for auto-render
-  let debounceTimer = null;
-  function debounceRender(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(tryRender, 700); }
+  /* ---------- State ---------- */
+  // One entry per dataset:
+  // { id, label, data, graph, layouts: { normal:{nodes:[{id,x,y}]}, linear:{nodes:[...]}} }
+  let store = [];
+  let current = -1;
 
-  inputEl.addEventListener('input', () => { if (autoBox.checked) debounceRender(); });
-  inputEl.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ tryRender(); }
-  });
-  autoBox.addEventListener('change', ()=> { renderBtn.classList.toggle('hidden', autoBox.checked); });
-  renderBtn.addEventListener('click', tryRender);
-  
-  // View mode button handlers
-  normalMode.addEventListener('click', ()=> {
-    normalMode.classList.add('active');
-    linearMode.classList.remove('active');
-    tryRender();
-  });
-  linearMode.addEventListener('click', ()=> {
-    linearMode.classList.add('active');
-    normalMode.classList.remove('active');
-    tryRender();
-  });
-  
-  rootSel.addEventListener('change', tryRender);
+  let physicsEnabled = true;
+  let activeSim = null;
 
-  
-  filterBtn.addEventListener('click', ()=>{
-    const vis = filterPanel.style.display === 'block';
-    filterPanel.style.display = vis? 'none':'block';
-  });
-  resetBtn.addEventListener('click', ()=> {
-    const w = svg.node().clientWidth, h = svg.node().clientHeight;
-    const center = d3.zoomIdentity.translate(w/2, h/2).scale(1).translate(-w/2, -h/2);
-    svg.transition().duration(250).call(zoomBehavior.transform, d3.zoomIdentity);
-  });
-
-  // Apply/Clear filter triggers rerender
-  if(filterApply){
-    filterApply.addEventListener('click', ()=> { filterPanel.style.display='none'; tryRender(); });
+  /* ---------- Utils ---------- */
+  function hash32(str){
+    let h=2166136261>>>0;
+    for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619)>>>0; }
+    return h.toString(16);
   }
-  if(filterClear){
-    filterClear.addEventListener('click', ()=>{
-      if(catSel) catSel.value=''; if(labelInp) labelInp.value=''; if(areaMin) areaMin.value=''; if(areaMax) areaMax.value=''; if(dimsSel) dimsSel.value='any';
-      tryRender();
-    });
+  function safeString(v){ return (v==null)? '': String(v); }
+  function addrFromMeta(meta){
+    const a = [safeString(meta.street_address), safeString(meta.suburb), safeString(meta.state)].filter(Boolean).join(', ');
+    return a || safeString(meta.title) || safeString(meta.name) || 'Untitled';
   }
-
-  // Example payload (valid JSON) for convenience
-  const example = {
-    "metadata": {
-      "street_address":"10 Gourlay Avenue","suburb":"Balgowlah","state":"NSW",
-      "total_area_m2":"35","total_rooms":"6","total_floors":"1",
-      "comments":"The plan shows a single floor with 6 spaces."
-    },
-    "spaces_list":[
-      {"space_id":"S1","space_category":"entry","space_label":"Entry","dimensions_mm":[2000],"area_m2":null,"access":["S2","EXT_STREET"],"comments":"The entry seems wide."},
-      {"space_id":"S2","space_category":"living room","space_label":"Living Room","dimensions_mm":null,"area_m2":"20","access":["S1","S3","S4"],"comments":"The living room is large and has a balcony."},
-      {"space_id":"S3","space_category":"kitchen","space_label":"Kitchen","dimensions_mm":[3000,2500],"area_m2":null,"access":["S2","S5"],"comments":"The kitchen does not appear to be in a normal location."},
-      {"space_id":"S4","space_category":"bedroom","space_label":"Bedroom","dimensions_mm":null,"area_m2":"15","access":["S2","S6"],"comments":"no comments"},
-      {"space_id":"S5","space_category":"laundry cupboard","space_label":"Laundry Cupboard","dimensions_mm":null,"area_m2":null,"access":["S3"],"comments":"the laundry cupboard seems to be doubled up as a walk-in robe."},
-      {"space_id":"S6","space_category":"balcony","space_label":"Balcony","dimensions_mm":null,"area_m2":null,"access":["S4","EXT_YARD"],"comments":"The balcony is large and has a view."}
-    ]
-  };
-  if(!inputEl.value.trim()) inputEl.value = JSON.stringify(example,null,2);
-
-  // Parsing with light sanitisation (comments + trailing commas)
-  function parseJSONLoose(txt){
-    try{
-      const cleaned = txt
-        .replace(/^\s*\/\/.*$/mg,'')                 // strip // comments
-        .replace(/\/\*[\s\S]*?\*\//g,'')             // strip /* */ comments
-        .replace(/,(\s*[}\]])/g,'$1');               // remove trailing commas
-      return JSON.parse(cleaned);
-    }catch(e){
-      throw new Error('JSON parse error: '+e.message);
-    }
-  }
-
-  // Stable hash → HSL colour
-  function hashColor(s, sat=65, light=55){
-    let h=0;
-    for(let i=0;i<s.length;i++){ h = (h*31 + s.charCodeAt(i))>>>0; }
-    return `hsl(${h%360} ${sat}% ${light}%)`;
-  }
-
   function numberish(x){
     if(x===null||x===undefined||x==="") return null;
     const n=+x; return Number.isFinite(n)?n:null;
@@ -362,9 +375,140 @@
     if(d.length===2) return `${d[0]} × ${d[1]} mm`;
     return d.join(' × ') + ' mm';
   }
+  function hashColor(s, sat=65, light=55){
+    let h=0; for(let i=0;i<s.length;i++){ h = (h*31 + s.charCodeAt(i))>>>0; }
+    return `hsl(${h%360} ${sat}% ${light}%)`;
+  }
+  function nowIso(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
 
-  // SVG text wrapper: splits into tspans to fit within a max width
-  // Keeps left-aligned text and stacks lines downward from the original y
+  function parseJSONLoose(txt){
+    const cleaned = txt
+      .replace(/^\s*\/\/.*$/mg,'')
+      .replace(/\/\*[\s\S]*?\*\//g,'')
+      .replace(/,(\s*[}\]])/g,'$1');
+    return JSON.parse(cleaned);
+  }
+  function isDatasetLike(obj){ return obj && typeof obj==='object' && Array.isArray(obj.spaces_list); }
+  function extractDatasets(root){
+    const out = [];
+    if(isDatasetLike(root)){ out.push(root); return out; }
+    if(Array.isArray(root)){ for(const it of root){ if(isDatasetLike(it)) out.push(it); } return out; }
+    if(root && typeof root==='object'){ for(const k of Object.keys(root)){ const v=root[k]; if(isDatasetLike(v)) out.push(v); } }
+    return out;
+  }
+
+  /* ---------- Graph build & depths ---------- */
+  function buildGraph(data){
+    const nodes = new Map();
+    const edgesSet = new Set();
+    const edges = [];
+    const spaces = Array.isArray(data.spaces_list)? data.spaces_list : [];
+
+    for(const s of spaces){
+      const id = String(s.space_id).trim();
+      if(!id) continue;
+      if(!nodes.has(id)){
+        nodes.set(id, {
+          id,
+          label: s.space_label??id,
+          category: (s.space_category??'').toLowerCase() || 'unspecified',
+          dims: Array.isArray(s.dimensions_mm)? s.dimensions_mm : null,
+          area: numberish(s.area_m2),
+          comments: s.comments??'',
+          isExterior: EXT_SET.has(id)
+        });
+      } else {
+        const n=nodes.get(id);
+        n.label = s.space_label??n.label;
+        n.category = (s.space_category??n.category)||n.category;
+        n.dims = Array.isArray(s.dimensions_mm)? s.dimensions_mm : n.dims;
+        n.area = numberish(s.area_m2)??n.area;
+        n.comments = s.comments??n.comments;
+      }
+
+      const acc = Array.isArray(s.access)? s.access : [];
+      for(const t of acc){
+        const tid = String(t).trim();
+        if(!tid) continue;
+
+        if(!nodes.has(tid)){
+          nodes.set(tid,{
+            id: tid, label: tid, category: EXT_SET.has(tid)? 'exterior':'unspecified',
+            dims:null, area:null, comments: '', isExterior: EXT_SET.has(tid)
+          });
+        }
+        const [a,b] = [id, tid].sort();
+        const key = a+"|"+b;
+        if(a!==b && !edgesSet.has(key)){
+          edgesSet.add(key);
+          edges.push({source:id, target:tid});
+        }
+      }
+    }
+    for(const id of nodes.keys()){
+      const n=nodes.get(id);
+      if(EXT_SET.has(id)){ n.category='exterior'; n.isExterior=true; }
+    }
+    return {nodes:[...nodes.values()], links:edges, metadata: data.metadata||{}};
+  }
+
+  function computeDepths(graph, chosenRoots){
+    const depth = new Map();
+    const q = [];
+    const roots = graph.nodes.filter(n=>n.isExterior && (!chosenRoots || chosenRoots.size===0 || chosenRoots.has(n.id)));
+    for(const r of roots){ depth.set(r.id,0); q.push(r.id); }
+
+    const adj = new Map();
+    for(const n of graph.nodes) adj.set(n.id,[]);
+    for(const e of graph.links){ adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source); }
+
+    while(q.length){
+      const v=q.shift();
+      for(const u of adj.get(v)||[]){
+        if(!depth.has(u)){
+          depth.set(u, depth.get(v)+1);
+          q.push(u);
+        }
+      }
+    }
+    if(depth.size===0 && graph.nodes.length){
+      depth.set(graph.nodes[0].id,0);
+      const visited=new Set([graph.nodes[0].id]), dq=[graph.nodes[0].id];
+      while(dq.length){
+        const v=dq.shift();
+        for(const u of adj.get(v)||[]){
+          if(!visited.has(u)){
+            visited.add(u); depth.set(u, (depth.get(v)||0)+1);
+            dq.push(u);
+          }
+        }
+      }
+    }
+    return depth;
+  }
+
+  /* ---------- Visual helpers ---------- */
+  function nodeFill(n, mode, depthMap){
+    if(mode==='linear'){
+      const d = depthMap.get(n.id) ?? 0;
+      const hue = (220 + d*40) % 360;
+      const l = Math.max(30, 70 - d*5);
+      return `hsl(${hue} 70% ${l}%)`;
+    } else {
+      return hashColor(n.category||'unspecified', 65, 55);
+    }
+  }
+  function nodeRadius(n, connectionCounts){
+    let baseRadius;
+    if(Number.isFinite(n.area) && n.area>0){
+      baseRadius = 6 + Math.min(26, Math.sqrt(n.area));
+    } else {
+      baseRadius = n.isExterior? 12 : 10;
+    }
+    const connections = connectionCounts.get(n.id) || 0;
+    const connectionMultiplier = 1 + (connections * 0.30);
+    return baseRadius * connectionMultiplier;
+  }
   function wrapSvgText(selection, maxWidth, lineHeightFactor = LABEL_LINE_HEIGHT_FACTOR){
     selection.each(function(){
       const text = d3.select(this);
@@ -397,109 +541,31 @@
     });
   }
 
-  function buildGraph(data){
-    const nodes = new Map();      // id → node
-    const edgesSet = new Set();   // "a|b"
-    const edges = [];
-
-    const spaces = Array.isArray(data.spaces_list)? data.spaces_list : [];
-
-    // ensure nodes for every space
-    for(const s of spaces){
-      const id = String(s.space_id).trim();
-      if(!id) continue;
-      if(!nodes.has(id)){
-        nodes.set(id, {
-          id,
-          label: s.space_label??id,
-          category: (s.space_category??'').toLowerCase() || 'unspecified',
-          dims: Array.isArray(s.dimensions_mm)? s.dimensions_mm : null,
-          area: numberish(s.area_m2),
-          comments: s.comments??'',
-          isExterior: EXT_SET.has(id)
-        });
-      } else {
-        // merge if duplicated
-        const n=nodes.get(id);
-        n.label = s.space_label??n.label;
-        n.category = (s.space_category??n.category)||n.category;
-        n.dims = Array.isArray(s.dimensions_mm)? s.dimensions_mm : n.dims;
-        n.area = numberish(s.area_m2)??n.area;
-        n.comments = s.comments??n.comments;
-      }
-
-      // edges from access
-      const acc = Array.isArray(s.access)? s.access : [];
-      for(const t of acc){
-        const tid = String(t).trim();
-        if(!tid) continue;
-
-        // create node if referenced only (e.g., exterior)
-        if(!nodes.has(tid)){
-          nodes.set(tid,{
-            id: tid, label: tid, category: EXT_SET.has(tid)? 'exterior':'unspecified',
-            dims:null, area:null, comments: '', isExterior: EXT_SET.has(tid)
-          });
-        }
-        const [a,b] = [id, tid].sort();
-        const key = a+"|"+b;
-        if(a!==b && !edgesSet.has(key)){
-          edgesSet.add(key);
-          edges.push({source:id, target:tid});
-        }
-      }
-    }
-    // ensure exterior nodes carry flag & category
-    for(const id of nodes.keys()){
-      const n=nodes.get(id);
-      if(EXT_SET.has(id)){
-        n.category = 'exterior';
-        n.isExterior = true;
-      }
-    }
-    return {nodes:[...nodes.values()], links:edges};
+  /* ---------- Layers & tooltip ---------- */
+  function clearLayers(){
+    if(activeSim){ activeSim.stop(); activeSim = null; }
+    guides.selectAll('*').remove();
+    linkLayer.selectAll('*').remove();
+    nodeLayer.selectAll('*').remove();
   }
-
-  function computeDepths(graph, chosenRoots){
-    const depth = new Map(); // id → level
-    const q = [];
-    const roots = graph.nodes.filter(n=>n.isExterior && (!chosenRoots || chosenRoots.size===0 || chosenRoots.has(n.id)));
-    for(const r of roots){ depth.set(r.id,0); q.push(r.id); }
-
-    const adj = new Map();
-    for(const n of graph.nodes) adj.set(n.id,[]);
-    for(const e of graph.links){ adj.get(e.source)?.push(e.target); adj.get(e.target)?.push(e.source); }
-
-    while(q.length){
-      const v=q.shift();
-      for(const u of adj.get(v)||[]){
-        if(!depth.has(u)){
-          depth.set(u, depth.get(v)+1);
-          q.push(u);
-        }
-      }
-    }
-    // fallback if no exterior was found
-    if(depth.size===0 && graph.nodes.length){
-      depth.set(graph.nodes[0].id,0);
-      computeFrom(graph.nodes[0].id);
-    }
-    function computeFrom(root){
-      const visited=new Set([root]), dq=[root];
-      while(dq.length){
-        const v=dq.shift();
-        for(const u of adj.get(v)||[]){
-          if(!visited.has(u)){
-            visited.add(u); depth.set(u, (depth.get(v)||0)+1);
-            dq.push(u);
-          }
-        }
-      }
-    }
-    return depth;
+  function tipShow(x,y, n){
+    tip.classList.remove('hidden');
+    tip.style.left = x+'px'; tip.style.top = y+'px';
+    const dims = dimsText(n.dims);
+    const area = (n.area!=null && n.area!=="")? `${n.area} m²` : '—';
+    tip.innerHTML = `
+      <h4>${n.label} <span class="pill">${n.id}</span></h4>
+      <div class="sub">${n.category}${n.isExterior? ' • exterior':' '}</div>
+      <div class="kv">
+        <div>Dimensions</div><div>${dims}</div>
+        <div>Area</div><div>${area}</div>
+        <div>Comments</div><div class="muted">${n.comments||'—'}</div>
+      </div>
+    `;
   }
+  function tipHide(){ tip.classList.add('hidden'); }
 
-  // Legend builder (by category in normal view, by depth in linear view)
+  /* ---------- Legend & metadata ---------- */
   function updateLegendNormal(nodes){
     const group = d3.group(nodes, d=>d.category);
     legendEl.innerHTML = '';
@@ -512,7 +578,6 @@
     }
   }
   function updateLegendLinear(depthMap){
-    // show first few depth bins
     const entries = [...new Set([...depthMap.values()].filter(v=>Number.isFinite(v)))].sort((a,b)=>a-b).slice(0,12);
     legendEl.innerHTML = '';
     for(const d of entries){
@@ -524,7 +589,6 @@
       legendEl.appendChild(sw);
     }
   }
-
   function updateMeta(meta, nodes, links){
     metaKv.innerHTML='';
     const kv = [
@@ -542,8 +606,6 @@
       metaKv.appendChild(kdiv); metaKv.appendChild(vdiv);
     }
 
-    // Rooms list with simple statistics
-    const roomsRows = document.getElementById('roomsRows');
     if(roomsRows){
       roomsRows.innerHTML = '';
       const header = document.createElement('div');
@@ -565,49 +627,17 @@
     }
   }
 
-  // fitToScreen removed per user request
-  function fitToScreen(){ return; }
-    // Use only nodes + links for fitting; ignore guides
-    function unionBBox(a,b){
-      if(!a) return b; if(!b) return a;
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      const maxX = Math.max(a.x + a.width, b.x + b.width);
-      const maxY = Math.max(a.y + a.height, b.y + b.height);
-      return {x, y, width: maxX-x, height: maxY-y};
-    }
-  
+  /* ---------- Main draw (physics restored; edges inline) ---------- */
+  function drawCurrent(){
+    if(current<0 || current>=store.length) return;
 
-  function nodeFill(n, mode, depthMap){
-    if(mode==='linear'){
-      const d = depthMap.get(n.id) ?? 0;
-      const hue = (220 + d*40) % 360;
-      const l = Math.max(30, 70 - d*5);
-      return `hsl(${hue} 70% ${l}%)`;
-    } else {
-      return hashColor(n.category||'unspecified', 65, 55);
-    }
-  }
+    const mode = (normalModeHud && normalModeHud.classList.contains('active')) ? 'normal' : 'linear';
+    hudMode.textContent = mode;
 
-  function tipShow(x,y, n){
-    tip.classList.remove('hidden');
-    tip.style.left = x+'px'; tip.style.top = y+'px';
-    const dims = dimsText(n.dims);
-    const area = (n.area!=null && n.area!=="")? `${n.area} m²` : '—';
-    tip.innerHTML = `
-      <h4>${n.label} <span class="pill">${n.id}</span></h4>
-      <div class="sub">${n.category}${n.isExterior? ' • exterior':' '}</div>
-      <div class="kv">
-        <div>Dimensions</div><div>${dims}</div>
-        <div>Area</div><div>${area}</div>
-        <div>Comments</div><div class="muted">${n.comments||'—'}</div>
-      </div>
-    `;
-  }
-  function tipHide(){ tip.classList.add('hidden'); }
+    const ds = store[current];
+    const graph = ds.graph;
 
-  function draw(graph, mode){
-    // Populate category options
+    // Populate category options once per set
     const cats = new Set((graph.nodes||[]).map(n=> (n.space_category||n.category||'unspecified')));
     if(catSel){
       const existing = new Set([...catSel.options].map(o=>o.value));
@@ -617,10 +647,35 @@
         }
       }
     }
-    let nodes = graph.nodes.map(d=>Object.assign({}, d)); // copy for simulation
-    let links = graph.links.map(d=>Object.assign({}, d));
 
-    // Apply filter
+    // Exterior roots
+    rootSel.innerHTML='';
+    const exts = graph.nodes.filter(n=>n.isExterior);
+    for(const e of exts){
+      const opt=document.createElement('option'); opt.value=e.id; opt.textContent=e.id; opt.selected=true;
+      rootSel.appendChild(opt);
+    }
+    const chosenRoots = new Set([...rootSel.selectedOptions].map(o=>o.value));
+
+    // Depths
+    const depthMap = computeDepths(graph, chosenRoots);
+
+    // Legend, meta, HUD
+    if(mode==='linear'){ updateLegendLinear(depthMap); }
+    else{ updateLegendNormal(graph.nodes); }
+    updateMeta(graph.metadata||{}, graph.nodes, graph.links);
+    hudStats.innerHTML = `<b>Nodes:</b> ${graph.nodes.length} · <b>Edges:</b> ${graph.links.length}`;
+
+    // Connection counts
+    const connectionCounts = new Map();
+    for(const link of graph.links) {
+      const sid = typeof link.source==='object'? link.source.id : link.source;
+      const tid = typeof link.target==='object'? link.target.id : link.target;
+      connectionCounts.set(sid, (connectionCounts.get(sid) || 0) + 1);
+      connectionCounts.set(tid, (connectionCounts.get(tid) || 0) + 1);
+    }
+
+    // Filter
     const modeSel = (document.querySelector('input[name="filterMode"]:checked')||{}).value || 'fade';
     const criteria = {
       cat: (catSel && catSel.value)||'',
@@ -641,121 +696,81 @@
       const dimsPresenceOk = criteria.dims==='any' || (criteria.dims==='yes' ? (n.dims && n.dims.length>0) : !(n.dims && n.dims.length>0));
       return catOk && lblOk && aOk && dOk && dimsPresenceOk;
     }
-    const nodeKeep = new Map(nodes.map(n=> [n.id, keepNode(n)]));
+
+    // Working copies
+    let nodes = graph.nodes.map(d=> ({...d}));
+    let links = graph.links.map(d=> ({...d}));
+
     if(modeSel==='erase'){
-      nodes = nodes.filter(n=> nodeKeep.get(n.id));
-      const keepIds = new Set(nodes.map(n=> n.id));
-      links = links.filter(l=> keepIds.has(l.source) && keepIds.has(l.target));
-    }
-    const idToNode = new Map(nodes.map(n=>[n.id,n]));
-    for(const l of links){
-      if(l && l.source) l.source = idToNode.get(typeof l.source==='object'? l.source.id : l.source) || idToNode.get(l.source) || l.source;
-      if(l && l.target) l.target = idToNode.get(typeof l.target==='object'? l.target.id : l.target) || idToNode.get(l.target) || l.target;
-    }
-
-    // Build adjacency usable in both modes
-    const adjAll = new Map();
-    for(const n of nodes) adjAll.set(n.id, new Set());
-    for(const e of links){
-      const sid = typeof e.source==='object'? e.source.id : e.source;
-      const tid = typeof e.target==='object'? e.target.id : e.target;
-      adjAll.get(sid)?.add(tid); adjAll.get(tid)?.add(sid);
+      const keepIds = new Set(nodes.filter(keepNode).map(n=> n.id));
+      nodes = nodes.filter(n=> keepIds.has(n.id));
+      links = links.filter(l=>{
+        const s = typeof l.source==='object'? l.source.id : l.source;
+        const t = typeof l.target==='object'? l.target.id : l.target;
+        return keepIds.has(s) && keepIds.has(t);
+      });
     }
 
-    // Exterior roots selector
-    rootSel.innerHTML='';
-    const exts = nodes.filter(n=>n.isExterior);
-    for(const e of exts){
-      const opt=document.createElement('option'); opt.value=e.id; opt.textContent=e.id; opt.selected=true;
-      rootSel.appendChild(opt);
-    }
-    const chosenRoots = new Set([...rootSel.selectedOptions].map(o=>o.value));
+    // Clear layers and stop any prior sim
+    clearLayers();
 
-    // Depths
-    const depthMap = computeDepths(graph, chosenRoots);
-
-    // Update legend + meta + HUD
-    if(mode==='linear'){ updateLegendLinear(depthMap); }
-    else{ updateLegendNormal(nodes); }
-
-    updateMeta(graph.metadata||{}, nodes, links);
-    hud.innerHTML = `<b>Mode:</b> ${mode}  ·  <b>Nodes:</b> ${nodes.length}  ·  <b>Edges:</b> ${links.length}`;
-
-    // Clear guides, links, nodes
-    guides.selectAll('*').remove();
-    linkLayer.selectAll('*').remove();
-    nodeLayer.selectAll('*').remove();
-
-    // Level guides for linear mode and compute lattice positions
-    let latticeY = null, latticeXpx = null, colIndexOf = null;
+    // Linear layout deterministically
+    let posMap = null;
     if(mode==='linear'){
-      const levels = d3.extent([...depthMap.values()].filter(Number.isFinite));
+      const levels = d3.extent([...computeDepths({nodes,links}, chosenRoots).values()].filter(Number.isFinite));
       const minL = Math.max(0, levels[0]??0), maxL = levels[1]??0;
-      const H = svg.node().clientHeight || 800;
       const W = svg.node().clientWidth || 1200;
-      const GRID = 60;              // base grid size
-      const MIN_UNITS = 2;          // min 2 grids apart
-      const V_GAP = GRID*MIN_UNITS; // vertical distance between levels
-      const originX = W/2;          // center grid
-      latticeY = (lvl)=> lvl*V_GAP + 80;
+      const GRID = 60, MIN_UNITS = 2, V_GAP = GRID*MIN_UNITS;
+      const originX = W/2;
+      const latticeY = (lvl)=> lvl*V_GAP + 80;
 
-      const adj = adjAll;
+      const byLevel = d3.group(nodes, d=> computeDepths({nodes,links}, chosenRoots).get(d.id)||0);
+      const colIdx = new Map();
 
-      const byLevel = d3.group(nodes, d=> depthMap.get(d.id)||0);
-      const colIdx = new Map(); // id -> integer column index
-
-      function isFree(col, used){
-        for(const u of used){ if(Math.abs(col - u) < MIN_UNITS) return false; }
-        return true;
-      }
+      function isFree(col, used){ for(const u of used){ if(Math.abs(col - u) < MIN_UNITS) return false; } return true; }
       function nearestFree(desired, used){
         if(isFree(desired, used)) return desired;
         for(let step=1; step<200; step++){
-          const left = desired - step, right = desired + step;
-          if(isFree(left, used)) return left;
-          if(isFree(right, used)) return right;
+          const L = desired - step, R = desired + step;
+          if(isFree(L, used)) return L;
+          if(isFree(R, used)) return R;
         }
-        return desired; // fallback
+        return desired;
       }
 
-      // Level 0: distribute exterior roots and any others
       const roots = byLevel.get(0) || [];
       const used0 = [];
-      let start0 = -Math.floor(((roots.length-1) * MIN_UNITS)/2)*1; // symmetric
-      let idx = start0;
-      for(const n of roots){
-        colIdx.set(n.id, idx);
-        used0.push(idx);
-        idx += MIN_UNITS;
-      }
+      let idx0 = -Math.floor(((roots.length-1) * MIN_UNITS)/2);
+      for(const n of roots){ colIdx.set(n.id, idx0); used0.push(idx0); idx0 += MIN_UNITS; }
 
-      // Subsequent levels
       for(let lvl=1; lvl<=maxL; lvl++){
         const arr = byLevel.get(lvl) || [];
         const used = [];
-        // Stable order: by id to keep deterministic
         arr.sort((a,b)=> (a.id<b.id?-1:1));
         for(const n of arr){
-          // parents are neighbors at previous level
-          const parents = [...(adj.get(n.id)||[])].filter(pid => (depthMap.get(pid)||0) === lvl-1);
+          const parents = links.flatMap(e=>{
+            const s = typeof e.source==='object'? e.source.id : e.source;
+            const t = typeof e.target==='object'? e.target.id : e.target;
+            if(s===n.id) return [t];
+            if(t===n.id) return [s];
+            return [];
+          }).filter(pid => (computeDepths({nodes,links}, chosenRoots).get(pid)||0) === lvl-1);
           let desired = 0;
           if(parents.length === 1){ desired = colIdx.get(parents[0]) ?? 0; }
           else if(parents.length > 1){
             const avg = parents.reduce((s,p)=> s + (colIdx.get(p)??0), 0)/parents.length;
             desired = Math.round(avg);
-          } else {
-            desired = 0;
           }
           const col = nearestFree(desired, used);
           colIdx.set(n.id, col); used.push(col);
         }
       }
-
-      // Column index to pixel converter
-      function colToX(col){ return originX + col*GRID; }
-      latticeXpx = new Map([...colIdx.entries()].map(([id,col]) => [id, colToX(col)]));
-      colIndexOf = (id)=> colIdx.get(id) ?? 0;
-
+      for(const n of nodes){
+        const lvl = computeDepths({nodes,links}, chosenRoots).get(n.id)||0;
+        n.x = originX + (colIdx.get(n.id)||0)*GRID;
+        n.y = latticeY(lvl);
+      }
+      posMap = new Map(nodes.map(n=> [n.id, n]));
       for(let l=minL; l<=maxL; l++){
         guides.append('line')
           .attr('class','level-guide')
@@ -765,73 +780,100 @@
       }
     }
 
-    // Calculate connection counts for collision force (by id)
-    const connectionCounts = new Map();
-    for(const link of links) {
-      const sid = typeof link.source==='object'? link.source.id : link.source;
-      const tid = typeof link.target==='object'? link.target.id : link.target;
-      connectionCounts.set(sid, (connectionCounts.get(sid) || 0) + 1);
-      connectionCounts.set(tid, (connectionCounts.get(tid) || 0) + 1);
+    // Fade map (endpoints dim together)
+    const fadeOpacity = new Map();
+    if(modeSel==='fade'){
+      for(const n of nodes){ fadeOpacity.set(n.id, keepNode(n) ? 1 : 0.18); }
     }
 
-    // Simulation (normal mode only). Linear mode uses deterministic lattice positions
+    // Links (inline-styled so exports include edges)
+    const link = linkLayer.selectAll('line')
+      .data(links, d=> (typeof d.source==='object'? d.source.id : d.source) + '|' + (typeof d.target==='object'? d.target.id : d.target))
+      .enter().append('line')
+      .attr('stroke', '#94a3b8')            /* inline */
+      .attr('stroke-opacity', 0.9)          /* inline */
+      .attr('stroke-width', 1.4);           /* inline */
+
+    // Nodes
+    const g = nodeLayer.selectAll('g.node')
+      .data(nodes, d=>d.id)
+      .enter().append('g')
+      .attr('class','node');
+
+    // Physics (normal mode only; restored). Cached layout seeds the sim.
     let sim = null;
-    if(mode!== 'linear'){
-      sim = d3.forceSimulation(nodes)
+    if(mode==='normal' && physicsEnabled){
+      const cached = ds.layouts && ds.layouts.normal;
+      if(cached && Array.isArray(cached.nodes)){
+        const pos = new Map(cached.nodes.map(d=> [d.id, {x:d.x,y:d.y}]));
+        nodes.forEach(n=> { const p=pos.get(n.id); if(p){ n.x=p.x; n.y=p.y; } });
+      }
+      activeSim = sim = d3.forceSimulation(nodes)
         .force('charge', d3.forceManyBody().strength(-200))
         .force('link', d3.forceLink(links).id(d=>d.id).distance(80).strength(0.8))
         .force('collide', d3.forceCollide().radius(d=> nodeRadius(d, connectionCounts)+6).iterations(2))
-        .force('center', d3.forceCenter(600, 400));
+        .force('center', d3.forceCenter(600, 400))
+        .alpha(0.9);
+    } else if(mode==='normal' && !physicsEnabled){
+      // If physics disabled, use cached or simple placement
+      const cached = ds.layouts && ds.layouts.normal;
+      if(cached && Array.isArray(cached.nodes)){
+        const pos = new Map(cached.nodes.map(d=> [d.id, {x:d.x,y:d.y}]));
+        nodes.forEach(n=> { const p=pos.get(n.id); if(p){ n.x=p.x; n.y=p.y; } });
+      } else {
+        // Coarse grid seed
+        let i=0; const cols=8, gap=120;
+        nodes.forEach(n=> { n.x=200+(i%cols)*gap; n.y=160+Math.floor(i/cols)*gap; i++; });
+      }
     }
 
-    function hash(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h*33 + s.charCodeAt(i))>>>0; } return h; }
+    // Drag
+    g.call(d3.drag()
+      .on('start', (event,d)=>{
+        if(sim){ if(!event.active) sim.alphaTarget(0.2).restart(); d.fx=d.x; d.fy=d.y; }
+      })
+      .on('drag', (event,d)=>{
+        if(sim){ d.fx=event.x; d.fy=event.y; }
+        else { d.x=event.x; d.y=event.y; tickOnce(); }
+      })
+      .on('end', (event,d)=>{
+        if(sim){ if(!event.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }
+        cachePositions();
+      })
+    );
 
-    // Links (always straight lines)
-    const link = linkLayer.selectAll('line').data(links).enter().append('line')
-      .attr('class', d => d.backbone? 'link backbone':'link faint')
-      .attr('stroke-width', 1.4)
-      .attr('marker-end', null); // undirected edges; switch to '#arrow' if desired
-
-    // Nodes
-    const g = nodeLayer.selectAll('g.node').data(nodes, d=>d.id).enter().append('g').attr('class','node');
-    if(mode!=='linear') g.call(drag(sim));
-
-    // Use the connection counts calculated earlier
-
-    // Create shapes
-    const shapes = g.each(function(d) {
+    // Node shapes
+    g.each(function(d) {
       const group = d3.select(this);
       const radius = nodeRadius(d, connectionCounts);
-      const fillColor = nodeFill(d, mode, depthMap);
+      const fillColor = nodeFill(d, mode, computeDepths(graph, chosenRoots));
       const hasDimensions = d.dims && Array.isArray(d.dims) && d.dims.length > 0;
-      
+
       if(d.isExterior) {
-        // Exterior roots as dotted circles (no fill)
         group.append('circle')
           .attr('r', radius)
           .attr('fill', 'none')
-          .attr('stroke', fillColor)
+          .attr('stroke', fillColor)         /* inline */
           .attr('stroke-dasharray', '4 4')
           .attr('stroke-width', (radius*0.42))
           .attr('stroke-opacity', 0.9)
           .classed('node-shape', true);
       } else {
-        // Circle for interior nodes
         group.append('circle')
           .attr('r', radius)
           .attr('fill', hasDimensions ? fillColor : 'none')
-          .attr('stroke', fillColor)
+          .attr('stroke', fillColor)         /* inline */
           .attr('stroke-width', hasDimensions ? (radius*0.14) : (radius*0.42))
           .attr('stroke-opacity', 0.9)
           .classed('node-shape', true);
       }
-      if(modeSel==='fade' && !nodeKeep.get(d.id)){
-        group.attr('opacity', 0.15);
+      if(modeSel==='fade'){
+        const op = fadeOpacity.get(d.id) ?? 1;
+        group.attr('opacity', op);
       }
     });
 
-    // Offset labels to avoid covering vertical edges; for linear mode, shift further right and slightly down
-    // Move text 1 text height lower by increasing the y offset by the font size
+    // Labels (important text styling inline so exports match)
     const labels = g.append('text')
       .attr('x', d=> nodeRadius(d, connectionCounts) + (mode==='linear' ? 18 : 10))
       .attr('y', d=> {
@@ -839,20 +881,25 @@
         return (mode === 'linear' ? 6 : 4) + fontSize;
       })
       .style('font-size', d=> d.isExterior ? '11px' : '12px')
+      .style('paint-order','stroke')           /* inline */
+      .style('stroke','#ffffff')               /* inline */
+      .style('stroke-width','3px')             /* inline */
+      .style('stroke-linejoin','round')        /* inline */
       .text(d=> d.label || d.id);
 
-    // Nuanced placement for linear-mode labels: try right, then left, then below/above centered
     if(mode === 'linear'){
       const SIDE_GAP = 10;
       const VERT_GAP = 8;
+
       function nearestBoundsOnLevel(node){
-        const x = latticeXpx.get(node.id);
-        const lvl = depthMap.get(node.id) || 0;
+        const x = node.x;
+        const lvl = computeDepths(graph, chosenRoots).get(node.id) || 0;
         let rightEdge = Infinity, leftEdge = -Infinity;
         for(const other of nodes){
           if(other.id===node.id) continue;
-          if((depthMap.get(other.id)||0)!==lvl) continue;
-          const ox = latticeXpx.get(other.id);
+          const olvl = computeDepths(graph, chosenRoots).get(other.id) || 0;
+          if(olvl!==lvl) continue;
+          const ox = other.x;
           const or = nodeRadius(other, connectionCounts);
           if(ox > x){ rightEdge = Math.min(rightEdge, ox - or); }
           if(ox < x){ leftEdge  = Math.max(leftEdge,  ox + or); }
@@ -860,33 +907,29 @@
         return {leftEdge, rightEdge};
       }
       function applyPlacement(textSel, node){
-        const x0 = latticeXpx.get(node.id);
         const r0 = nodeRadius(node, connectionCounts);
         const fontSize = node.isExterior ? 11 : 12;
-        const baseRightX = r0 + 18; // default right offset used above
+        const baseRightX = r0 + 18;
         const {leftEdge, rightEdge} = nearestBoundsOnLevel(node);
 
-        const rightAvail = Number.isFinite(rightEdge)? Math.max(0, (rightEdge - SIDE_GAP) - (x0 + baseRightX)) : LABEL_WRAP_WIDTH_LINEAR;
-        const leftAvail  = Number.isFinite(leftEdge) ? Math.max(0, (x0 - (r0 + 18)) - (leftEdge + SIDE_GAP)) : LABEL_WRAP_WIDTH_LINEAR;
+        const rightAvail = Number.isFinite(rightEdge)? Math.max(0, (rightEdge - 10) - (node.x + baseRightX)) : LABEL_WRAP_WIDTH_LINEAR;
+        const leftAvail  = Number.isFinite(leftEdge) ? Math.max(0, (node.x - (r0 + 18)) - (leftEdge + 10)) : LABEL_WRAP_WIDTH_LINEAR;
 
         const el = d3.select(textSel);
-        // Option 1: Right side if space is decent
         if(rightAvail >= 80){
           el.attr('x', baseRightX).attr('y', fontSize + 6).attr('text-anchor','start');
           el.text(node.label || node.id);
           el.call(wrapSvgText, rightAvail);
           return;
         }
-        // Option 2: Left side if better than right
         if(leftAvail >= rightAvail && leftAvail >= 80){
           el.attr('x', -(r0 + 18)).attr('y', fontSize + 6).attr('text-anchor','end');
           el.text(node.label || node.id);
           el.call(wrapSvgText, leftAvail);
           return;
         }
-        // Option 3: Below centered
         const belowY = r0 + fontSize + VERT_GAP;
-        const centerAvail = Math.max(80, Math.min(LABEL_WRAP_WIDTH_LINEAR, leftAvail + rightAvail - 2*SIDE_GAP));
+        const centerAvail = Math.max(80, Math.min(LABEL_WRAP_WIDTH_LINEAR, leftAvail + rightAvail - 20));
         el.attr('x', 0).attr('y', belowY).attr('text-anchor','middle');
         el.text(node.label || node.id);
         el.call(wrapSvgText, centerAvail);
@@ -894,128 +937,530 @@
       labels.each(function(d){ applyPlacement(this, d); });
     }
 
-    // Position nodes deterministically in linear mode
-    if(mode==='linear'){
-      for(const n of nodes){
-        const lvl = depthMap.get(n.id)||0;
-        n.x = latticeXpx.get(n.id);
-        n.y = latticeY(lvl);
-      }
-      // Ensure link endpoints use resolved node objects
-      link
-        .attr('x1', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const a=anchorPoint(s,t); return isFinite(a.x)?a.x:0; })
-        .attr('y1', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const a=anchorPoint(s,t); return isFinite(a.y)?a.y:0; })
-        .attr('x2', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const b=anchorPoint(t,s); return isFinite(b.x)?b.x:0; })
-        .attr('y2', d=> { const s = (typeof d.source==='object')? d.source : idToNode.get(d.source); const t = (typeof d.target==='object')? d.target : idToNode.get(d.target); const b=anchorPoint(t,s); return isFinite(b.y)?b.y:0; });
-      g.attr('transform', d=> `translate(${d.x},${d.y})`);
-      // No automatic fit
+    // Robust anchor calculation
+    function anchorPointByIds(sId, tId){
+      const sn = (mode==='linear' && posMap)? posMap.get(sId) : nodes.find(x=>x.id===sId);
+      const tn = (mode==='linear' && posMap)? posMap.get(tId) : nodes.find(x=>x.id===tId);
+      if(!sn || !tn) return {x1:0,y1:0,x2:0,y2:0};
+      const rS = nodeRadius(sn, connectionCounts);
+      const vx = tn.x - sn.x, vy = tn.y - sn.y;
+      const len = Math.hypot(vx, vy) || 1;
+      const ux = vx/len, uy = vy/len;
+      const rT = nodeRadius(tn, connectionCounts);
+      return { x1: sn.x + ux*rS, y1: sn.y + uy*rS, x2: tn.x - ux*rT, y2: tn.y - uy*rT };
     }
 
-    // Add hover events to the node shapes
+    function tickOnce(){
+      link
+        .attr('x1', d=>{ const s=(typeof d.source==='object')? d.source.id : d.source; const t=(typeof d.target==='object')? d.target.id : d.target; return anchorPointByIds(s,t).x1; })
+        .attr('y1', d=>{ const s=(typeof d.source==='object')? d.source.id : d.source; const t=(typeof d.target==='object')? d.target.id : d.target; return anchorPointByIds(s,t).y1; })
+        .attr('x2', d=>{ const s=(typeof d.source==='object')? d.source.id : d.source; const t=(typeof d.target==='object')? d.target.id : d.target; return anchorPointByIds(s,t).x2; })
+        .attr('y2', d=>{ const s=(typeof d.source==='object')? d.source.id : d.source; const t=(typeof d.target==='object')? d.target.id : d.target; return anchorPointByIds(s,t).y2; })
+        .attr('opacity', d=>{
+          if(modeSel!=='fade') return 1;
+          const s=(typeof d.source==='object')? d.source.id : d.source;
+          const t=(typeof d.target==='object')? d.target.id : d.target;
+          return Math.min(fadeOpacity.get(s)??1, fadeOpacity.get(t)??1);
+        });
+
+      g.attr('transform', d=> `translate(${d.x},${d.y})`);
+    }
+
+    // Initial tick and sim hooks
+    tickOnce();
+    if(sim){
+      sim.on('tick', tickOnce);
+      sim.on('end', cachePositions);
+    }
+
+    // Tooltip
     g.selectAll('.node-shape').on('mouseenter', function(ev, d){
-      // Get SVG coordinates instead of screen coordinates
       const svgRect = svg.node().getBoundingClientRect();
       const nodeRect = this.getBoundingClientRect();
       const x = nodeRect.left + nodeRect.width/2 - svgRect.left;
       const y = nodeRect.top - svgRect.top;
       tipShow(x, y, d);
-      const current = parseFloat(d3.select(this).attr('stroke-width')) || 1.4;
-      d3.select(this).attr('stroke-width', Math.min(current + 1.4, current*1.35));
-    }).on('mouseleave', function(ev, d){
-      tipHide();
-      const hasDimensions = d.dims && Array.isArray(d.dims) && d.dims.length > 0;
-      d3.select(this).attr('stroke-width', hasDimensions ? '1.4px' : '5px');
+    }).on('mouseleave', function(){ tipHide(); });
+
+    function cachePositions(){
+      if(!ds.layouts) ds.layouts = {};
+      if(mode==='normal'){
+        ds.layouts.normal = { nodes: nodes.map(n=> ({id:n.id,x:n.x,y:n.y})) };
+      } else {
+        ds.layouts.linear = { nodes: nodes.map(n=> ({id:n.id,x:n.x,y:n.y})) };
+      }
+    }
+  }
+
+  /* ---------- Dataset operations ---------- */
+  function addDatasets(arr){
+    const added = [];
+    for(const data of arr){
+      try{
+        const graph = buildGraph(data);
+        const label = addrFromMeta(graph.metadata);
+        const raw = JSON.stringify({meta:graph.metadata, nodes:graph.nodes, links:graph.links});
+        let id = hash32(raw + label);
+        if(store.some(d=>d.id===id)){ id = id + '_' + Math.random().toString(36).slice(2,6); }
+        store.push({ id, label, data, graph, layouts:{} });
+        added.push({id,label});
+      }catch(e){ /* skip invalid */ }
+    }
+    if(added.length>0){
+      if(current===-1) current=0;
+      updateDsUI();
+      drawCurrent();
+    }
+    return added.length;
+  }
+  function replaceCurrentFrom(data){
+    if(current<0) return;
+    const graph = buildGraph(data);
+    const label = addrFromMeta(graph.metadata);
+    store[current] = { id: store[current].id, label, data, graph, layouts:{} };
+    updateDsUI();
+    drawCurrent();
+  }
+  function clearAll(){
+    store = []; current = -1;
+    updateDsUI(); clearLayers();
+    legendEl.innerHTML=''; metaKv.innerHTML=''; roomsRows.innerHTML='';
+    hudAddrEl.textContent = '—'; hudStats.textContent = ''; dsAddrEl.textContent = '—';
+  }
+  function selectIndex(i){
+    if(store.length===0){ current=-1; updateDsUI(); return; }
+    current = ((i % store.length) + store.length) % store.length;
+    updateDsUI();
+    closeFilterPanel();
+    drawCurrent();
+  }
+  function updateDsUI(){
+    dsCountEl.textContent = String(store.length);
+    dsIdxEl.textContent = (current>=0? (current+1) : 0);
+    const lbl = (current>=0? store[current].label : '—');
+    dsAddrEl.textContent = lbl;
+    hudAddrEl.textContent = lbl;
+
+    dsListEl.innerHTML='';
+    store.forEach((d,idx)=>{
+      const row = document.createElement('div');
+      row.className = 'ds-item' + (idx===current? ' active':'');
+      row.innerHTML = `
+        <span class="badge">#${idx+1}</span>
+        <div class="addr" title="${d.label}">${d.label}</div>
+        <div>
+          <button data-i="${idx}" class="tight sel">Open</button>
+          <button data-i="${idx}" class="tight del" title="Remove">✕</button>
+        </div>
+      `;
+      dsListEl.appendChild(row);
+    });
+    dsListEl.querySelectorAll('button.sel').forEach(b=>{
+      b.onclick = ()=> selectIndex(parseInt(b.getAttribute('data-i'),10));
+    });
+    dsListEl.querySelectorAll('button.del').forEach(b=>{
+      b.onclick = ()=>{
+        const i = parseInt(b.getAttribute('data-i'),10);
+        store.splice(i,1);
+        if(current>=store.length) current = store.length-1;
+        updateDsUI();
+        if(current>=0) drawCurrent(); else clearLayers();
+      };
     });
 
-    function anchorPoint(n, other){
-      const cx = n.x, cy = n.y;
-      const vx = other.x - cx, vy = other.y - cy;
-      const len = Math.hypot(vx, vy) || 1;
-      const ux = vx/len, uy = vy/len;
-      const r = nodeRadius(n, connectionCounts);
-      if(n.isExterior){
-        // exterior rendered as dotted circle; use perimeter like circle
-        return {x: cx + ux*r, y: cy + uy*r};
-      }
-      return {x: cx + ux*r, y: cy + uy*r};
-    }
-
-    if(mode!=='linear' && sim){
-      sim.on('tick', ()=>{
-        link
-          .attr('x1', d=> anchorPoint(d.source, d.target).x)
-          .attr('y1', d=> anchorPoint(d.source, d.target).y)
-          .attr('x2', d=> anchorPoint(d.target, d.source).x)
-          .attr('y2', d=> anchorPoint(d.target, d.source).y);
-
-        g.attr('transform', d=> `translate(${d.x},${d.y})`);
-      });
-      sim.on('end', ()=> fitToScreen(60, true));
-    }
-
-
-    // Drag behaviour
-    function drag(sim){
-      function dragstarted(event, d){
-        if(!event.active) sim.alphaTarget(0.2).restart();
-        d.fx = d.x; d.fy = d.y;
-      }
-      function dragged(event, d){ d.fx = event.x; d.fy = event.y; }
-      function dragended(event, d){
-        if(!event.active) sim.alphaTarget(0);
-        d.fx = null; d.fy = null;
-      }
-      return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
-    }
-
-    function nodeRadius(n, connectionCounts){
-      // Base radius from area
-      let baseRadius;
-      if(Number.isFinite(n.area) && n.area>0){
-        baseRadius = 6 + Math.min(26, Math.sqrt(n.area)); // gentle scaling
-      } else {
-        baseRadius = n.isExterior? 12 : 10;
-      }
-      
-      // Scale by connection count
-      const connections = connectionCounts.get(n.id) || 0;
-      const connectionMultiplier = 1 + (connections * 0.30); // stronger scaling
-      
-      return baseRadius * connectionMultiplier;
+    if(current>=0){
+      inputEl.value = JSON.stringify(store[current].data, null, 2);
     }
   }
 
-  function tryRender(){
-    errorBox.classList.add('hidden'); errorBox.textContent='';
-    let data;
-    const t0 = performance.now();
+  /* ---------- Export helpers (SVG→Canvas→JPEG bytes; multi-page PDF) ---------- */
+  function serializeSvgWithBg(){
+    const el = document.getElementById('viz');
+    const clone = el.cloneNode(true);
+    // Add white background
+    const vb = clone.getAttribute('viewBox').split(' ').map(Number);
+    const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    bg.setAttribute('x', vb[0]); bg.setAttribute('y', vb[1]);
+    bg.setAttribute('width', vb[2]); bg.setAttribute('height', vb[3]);
+    bg.setAttribute('fill', '#ffffff');
+    clone.insertBefore(bg, clone.firstChild);
+    const xml = new XMLSerializer().serializeToString(clone);
+    return `<?xml version="1.0" encoding="UTF-8"?>\n` + xml;
+  }
+  function svgToCanvas(svgText){
+    return new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const vb = /viewBox="([^"]+)"/.exec(svgText);
+        let w=1200,h=800;
+        if(vb){ const a = vb[1].split(/\s+/).map(Number); w=a[2]; h=a[3]; }
+        const canvas = document.createElement('canvas'); canvas.width=w; canvas.height=h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve({canvas, width:w, height:h});
+      };
+      img.onerror = ()=> reject(new Error('SVG rasterisation failed'));
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+    });
+  }
+  function canvasToPngBlob(canvas){
+    return new Promise(res=> canvas.toBlob(b=> res(b), 'image/png'));
+  }
+  function canvasToJpegBytes(canvas, quality=0.92){
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    const base64 = dataUrl.split(',')[1];
+    const binStr = atob(base64);
+    const bytes = new Uint8Array(binStr.length);
+    for(let i=0;i<binStr.length;i++) bytes[i] = binStr.charCodeAt(i);
+    return bytes;
+  }
+  function download(name, blob){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+  }
+
+  // Minimal multi-page PDF with JPEG pages
+  function buildPdfFromPages(pages){
+    // pages: [{bytes:Uint8Array,width:number,height:number}]
+    function str2bytes(s){ const a=new Uint8Array(s.length); for(let i=0;i<s.length;i++) a[i]=s.charCodeAt(i); return a; }
+    function concat(arrs){ let n=0; for(const a of arrs) n+=a.length; const out=new Uint8Array(n); let o=0; for(const a of arrs){ out.set(a,o); o+=a.length; } return out; }
+
+    const header = str2bytes('%PDF-1.4\n');
+    const objs = []; const xrefs = [];
+    let offset = header.length;
+
+    function addRawObject(prefixStr, bodyBytes){
+      const head = str2bytes(prefixStr);
+      const tail = str2bytes('\nendobj\n');
+      const full = concat([head, bodyBytes, tail]);
+      xrefs.push(offset);
+      offset += full.length;
+      objs.push(full);
+      return xrefs.length; // object number equals index in xrefs (since we start at 1 later)
+    }
+    function addTextObject(text){ return addRawObject((objs.length+1)+' 0 obj\n', str2bytes(text)); }
+    function addStreamObject(dictText, streamBytes){
+      const pre = str2bytes((objs.length+1)+' 0 obj\n' + `<< ${dictText} /Length ${streamBytes.length} >>\nstream\n`);
+      const tail = str2bytes('\nendstream\nendobj\n');
+      const full = concat([pre, streamBytes, tail]);
+      xrefs.push(offset);
+      offset += full.length;
+      objs.push(full);
+      return xrefs.length;
+    }
+
+    // Reserve Catalog and Pages first; fill Kids later
+    const catalogNum = addTextObject('<< /Type /Catalog /Pages 2 0 R >>');
+    const pagesKids = []; // will hold page object numbers
+    const pagesNum = addTextObject('<< /Type /Pages /Kids [] /Count 0 >>'); // placeholder; we will replace later (by reconstructing trailer; acceptable in this simple builder)
+
+    const pageObjs = [];
+    pages.forEach((pg, i)=>{
+      const dpi = 96;
+      const Wpt = Math.round(pg.width * 72 / dpi);
+      const Hpt = Math.round(pg.height * 72 / dpi);
+
+      const imgNum = addStreamObject(`/Type /XObject /Subtype /Image /Width ${pg.width} /Height ${pg.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode`, pg.bytes);
+      const contentStream = str2bytes(`q\n${Wpt} 0 0 ${Hpt} 0 0 cm\n/Im0 Do\nQ`);
+      const contentNum = addStreamObject('', contentStream);
+      const pageNum = addTextObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Wpt} ${Hpt}] /Resources << /XObject << /Im0 ${imgNum} 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ${contentNum} 0 R >>`);
+      pagesKids.push(pageNum);
+      pageObjs.push(pageNum);
+    });
+
+    // Rebuild Pages object with Kids
+    const kidsText = pagesKids.map(n=> `${n} 0 R`).join(' ');
+    const pagesObjUpdated = str2bytes(`2 0 obj\n<< /Type /Pages /Kids [ ${kidsText} ] /Count ${pagesKids.length} >>\nendobj\n`);
+    const pagesOffset = xrefs[1]; // object #2 (Pages) offset
+    // Replace: we cannot actually replace easily without re-serialising; simple approach: append updated pages object and point Catalog to new one would need to change catalogs; simpler: we rebuild whole PDF properly:
+    // To keep it simple and consistent, we will ignore replacement and instead rebuild objects from scratch with correct ordering:
+
+    // Full rebuild:
+    const objs2 = [];
+    const xrefs2 = [];
+    let offset2 = header.length;
+
+    function push(bytes){ xrefs2.push(offset2); offset2+=bytes.length; objs2.push(bytes); }
+
+    // 1 Catalog, 2 Pages, then for each page: Image, Contents, Page
+    const catalog2 = str2bytes('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+    push(catalog2);
+
+    const pages2 = str2bytes(`2 0 obj\n<< /Type /Pages /Kids [ ${kidsText} ] /Count ${pagesKids.length} >>\nendobj\n`);
+    push(pages2);
+
+    // We must recreate the rest in same order as earlier created (but with renumbered ids)
+    // To avoid complex remapping, we re-create streams again for each page:
+    let nextObjNum = 3;
+    const remap = []; // list of page object numbers we will reference
+    pages.forEach((pg)=>{
+      const dpi = 96;
+      const Wpt = Math.round(pg.width * 72 / dpi);
+      const Hpt = Math.round(pg.height * 72 / dpi);
+
+      const imgDict = `<< /Type /XObject /Subtype /Image /Width ${pg.width} /Height ${pg.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${pg.bytes.length} >>`;
+      const pre = str2bytes(`${nextObjNum} 0 obj\n${imgDict}\nstream\n`);
+      const tail = str2bytes('\nendstream\nendobj\n');
+      push(concat([pre, pg.bytes, tail]));
+      const imgObjNum = nextObjNum; nextObjNum++;
+
+      const contentStream = str2bytes(`q\n${Wpt} 0 0 ${Hpt} 0 0 cm\n/Im0 Do\nQ`);
+      const contentPre = str2bytes(`${nextObjNum} 0 obj\n<< /Length ${contentStream.length} >>\nstream\n`);
+      const contentTail = str2bytes('\nendstream\nendobj\n');
+      push(concat([contentPre, contentStream, contentTail]));
+      const contentObjNum = nextObjNum; nextObjNum++;
+
+      const pageObjText = str2bytes(`${nextObjNum} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${Wpt} ${Hpt}] /Resources << /XObject << /Im0 ${imgObjNum} 0 R >> /ProcSet [/PDF /ImageC] >> /Contents ${contentObjNum} 0 R >>\nendobj\n`);
+      push(pageObjText);
+      remap.push(nextObjNum);
+      nextObjNum++;
+    });
+
+    // XREF + trailer
+    let xref = `xref\n0 ${nextObjNum}\n`;
+    xref += '0000000000 65535 f \n';
+    let pos = header.length;
+    for(const b of objs2){ xref += String(pos).padStart(10,'0') + ' 00000 n \n'; pos += b.length; }
+
+    const startxref = pos;
+    const trailer = `trailer\n<< /Size ${nextObjNum} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF`;
+
+    const pdfBytes = concat([header, ...objs2, str2bytes(xref), str2bytes(trailer)]);
+    return new Blob([pdfBytes], {type:'application/pdf'});
+  }
+
+  /* ---------- Export actions ---------- */
+  async function exportSvgCurrent(){
+    document.body.classList.add('exporting');
     try{
-      data = parseJSONLoose(inputEl.value);
-    }catch(e){
-      errorBox.textContent = e.message;
-      errorBox.classList.remove('hidden');
-      return;
+      const svgText = serializeSvgWithBg();
+      download(`graph_${nowIso()}.svg`, new Blob([svgText], {type:'image/svg+xml'}));
+    } finally {
+      document.body.classList.remove('exporting');
     }
-    const graph = buildGraph(data);
-    graph.metadata = data.metadata || {};
-    const n = graph.nodes.length, m = graph.links.length;
-
-    // Switch to manual render for large graphs
-    const large = (n>150 || m>400);
-    if(large && autoBox.checked){
-      autoBox.checked = false;
-      renderBtn.classList.remove('hidden');
+  }
+  async function exportPngCurrent(){
+    document.body.classList.add('exporting');
+    try{
+      const svgText = serializeSvgWithBg();
+      const {canvas} = await svgToCanvas(svgText);
+      const blob = await canvasToPngBlob(canvas);
+      download(`graph_${nowIso()}.png`, blob);
+    } finally {
+      document.body.classList.remove('exporting');
     }
+  }
+  async function exportPdfAll(){
+    if(store.length===0) return alert('No datasets to export.');
+    document.body.classList.add('exporting');
+    const prevIdx = current;
+    const prevIsNormal = normalModeHud.classList.contains('active');
 
-    const currentMode = normalMode.classList.contains('active') ? 'normal' : 'linear';
-    draw(graph, currentMode);
+    const pages = [];
+    try{
+      for(let i=0;i<store.length;i++){
+        // Normal
+        normalModeHud.classList.add('active'); linearModeHud.classList.remove('active');
+        selectIndex(i);
+        
+        // Wait for physics simulation to settle in normal mode
+        if(activeSim) {
+          activeSim.alpha(0.3).restart();
+          await new Promise(resolve => {
+            const checkStable = () => {
+              if(activeSim.alpha() < 0.01) {
+                resolve();
+              } else {
+                setTimeout(checkStable, 50);
+              }
+            };
+            checkStable();
+          });
+        } else {
+          // Small delay to ensure rendering is complete
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        const svgN = serializeSvgWithBg();
+        const {canvas:canvasN, width:wn, height:hn} = await svgToCanvas(svgN);
+        const bytesN = canvasToJpegBytes(canvasN, 0.95);
+        pages.push({bytes:bytesN, width:wn, height:hn});
 
-    const dt = Math.max(1, Math.round(performance.now()-t0));
-    hud.innerHTML += `  ·  <b>Parse:</b> ${dt} ms`;
+        // Linear
+        linearModeHud.classList.add('active'); normalModeHud.classList.remove('active');
+        drawCurrent();
+        // Linear mode is deterministic, small delay is sufficient
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const svgL = serializeSvgWithBg();
+        const {canvas:canvasL, width:wl, height:hl} = await svgToCanvas(svgL);
+        const bytesL = canvasToJpegBytes(canvasL, 0.95);
+        pages.push({bytes:bytesL, width:wl, height:hl});
+      }
+      const pdfBlob = buildPdfFromPages(pages);
+      download(`graphs_all_${nowIso()}.pdf`, pdfBlob);
+    } catch(err){
+      console.error(err);
+      alert('PDF export failed: ' + err.message);
+    } finally{
+      // restore UI
+      if(prevIsNormal){ normalModeHud.classList.add('active'); linearModeHud.classList.remove('active'); } else { linearModeHud.classList.add('active'); normalModeHud.classList.remove('active'); }
+      selectIndex(prevIdx);
+      document.body.classList.remove('exporting');
+    }
   }
 
-  // Initial render
-  tryRender();
+  function exportGraphData(){
+    const payload = store.map(ds=> ({
+      id: ds.id,
+      label: ds.label,
+      metadata: ds.graph.metadata||{},
+      nodes: ds.graph.nodes,
+      links: ds.graph.links
+    }));
+    const blob = new Blob([JSON.stringify({objects:payload}, null, 2)], {type:'application/json'});
+    download(`graph_data_${nowIso()}.json`, blob);
+  }
+
+  /* ---------- Filter panel fold-off ---------- */
+  function openFilterPanel(){
+    filterPanel.style.display = 'block';
+    setTimeout(()=> { const first = filterPanel.querySelector('input,select'); if(first) first.focus(); }, 0);
+  }
+  function closeFilterPanel(){ filterPanel.style.display = 'none'; }
+
+  /* ---------- Events ---------- */
+  let debounceTimer = null;
+  function scheduleRender(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(drawCurrent, 700); }
+
+  inputEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){
+      try {
+        const obj = parseJSONLoose(inputEl.value);
+        const arr = extractDatasets(obj);
+        if(arr.length===0) throw new Error('No dataset found in textarea.');
+        if(store.length===0){ addDatasets(arr); }
+        else{ replaceCurrentFrom(arr[0]); if(arr.length>1) addDatasets(arr.slice(1)); }
+        errorBox.classList.add('hidden');
+      }catch(err){
+        errorBox.textContent = err.message || String(err);
+        errorBox.classList.remove('hidden');
+      }
+    }
+  });
+  inputEl.addEventListener('input', ()=> { if (autoBox.checked) scheduleRender(); });
+
+  autoBox.addEventListener('change', ()=> { renderBtn.classList.toggle('hidden', autoBox.checked); });
+  renderBtn.addEventListener('click', drawCurrent);
+
+  // Legacy mode buttons no longer exist
+  normalModeHud.addEventListener('click', ()=> { normalModeHud.classList.add('active'); linearModeHud.classList.remove('active'); drawCurrent(); });
+  linearModeHud.addEventListener('click', ()=> { linearModeHud.classList.add('active'); normalModeHud.classList.remove('active'); drawCurrent(); });
+  rootSel.addEventListener('change', drawCurrent);
+
+  filterBtn.addEventListener('click', ()=>{ const vis = filterPanel.style.display === 'block'; if(vis) closeFilterPanel(); else openFilterPanel(); });
+  filterApply.addEventListener('click', ()=> { closeFilterPanel(); drawCurrent(); });
+  filterClear.addEventListener('click', ()=> {
+    if(catSel) catSel.value=''; if(labelInp) labelInp.value=''; if(areaMin) areaMin.value=''; if(areaMax) areaMax.value=''; if(dimsSel) dimsSel.value='any';
+    drawCurrent();
+  });
+  filterClose.addEventListener('click', closeFilterPanel);
+  document.addEventListener('mousedown', (e)=>{ if(filterPanel.style.display==='block'){ const within = filterPanel.contains(e.target) || e.target===filterBtn; if(!within) closeFilterPanel(); } });
+  document.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && filterPanel.style.display==='block') closeFilterPanel(); });
+
+  resetBtn.addEventListener('click', ()=> { svg.transition().duration(250).call(zoomBehavior.transform, d3.zoomIdentity); });
+
+  // Physics toggle removed - always enabled
+
+  dsPrev.addEventListener('click', ()=> selectIndex(current-1));
+  dsNext.addEventListener('click', ()=> selectIndex(current+1));
+  hudPrev.addEventListener('click', ()=> selectIndex(current-1));
+  hudNext.addEventListener('click', ()=> selectIndex(current+1));
+
+  loadFilesBtn.addEventListener('click', ()=> fileInput.click());
+  fileInput.addEventListener('change', async (e)=>{
+    const files = [...e.target.files||[]];
+    if(files.length===0) return;
+    const texts = await Promise.all(files.map(f=> f.text().catch(()=>'')));
+    let total=0;
+    for(const t of texts){
+      try{
+        const obj = parseJSONLoose(t);
+        const arr = extractDatasets(obj);
+        if(arr.length>0){ total += addDatasets(arr); }
+      }catch(_){}
+    }
+    if(total===0){ alert('No valid datasets found in selected files.'); }
+    fileInput.value = '';
+  });
+
+  addFromTextBtn.addEventListener('click', ()=>{
+    try{
+      const obj = parseJSONLoose(inputEl.value);
+      const arr = extractDatasets(obj);
+      if(arr.length===0) throw new Error('No dataset found in textarea.');
+      const n = addDatasets(arr);
+      if(n===0) alert('No new datasets added (possible duplicates).');
+      errorBox.classList.add('hidden');
+    }catch(err){
+      errorBox.textContent = err.message || String(err);
+      errorBox.classList.remove('hidden');
+    }
+  });
+
+  replaceCurrentBtn.addEventListener('click', ()=>{
+    try{
+      const obj = parseJSONLoose(inputEl.value);
+      const arr = extractDatasets(obj);
+      if(arr.length===0) throw new Error('No dataset found in textarea.');
+      replaceCurrentFrom(arr[0]);
+      errorBox.classList.add('hidden');
+    }catch(err){
+      errorBox.textContent = err.message || String(err);
+      errorBox.classList.remove('hidden');
+    }
+  });
+
+  clearAllBtn.addEventListener('click', ()=> { if(confirm('Remove all datasets?')) clearAll(); });
+
+  exportDataBtn.addEventListener('click', exportGraphData);
+  exportSvgBtn.addEventListener('click', exportSvgCurrent);
+  exportPngBtn.addEventListener('click', exportPngCurrent);
+  exportPdfBtn.addEventListener('click', exportPdfAll);
+
+  /* ---------- Initial example ---------- */
+  const example = [
+    {
+      "metadata": {
+        "street_address":"10 Gourlay Avenue","suburb":"Balgowlah","state":"NSW",
+        "total_area_m2":"35","total_rooms":"6","total_floors":"1",
+        "comments":"The plan shows a single floor with 6 spaces."
+      },
+      "spaces_list":[
+        {"space_id":"S1","space_category":"entry","space_label":"Entry","dimensions_mm":[2000],"area_m2":null,"access":["S2","EXT_STREET"],"comments":"The entry seems wide."},
+        {"space_id":"S2","space_category":"living room","space_label":"Living Room","dimensions_mm":null,"area_m2":"20","access":["S1","S3","S4"],"comments":"The living room is large and has a balcony."},
+        {"space_id":"S3","space_category":"kitchen","space_label":"Kitchen","dimensions_mm":[3000,2500],"area_m2":null,"access":["S2","S5"],"comments":"The kitchen does not appear to be in a normal location."},
+        {"space_id":"S4","space_category":"bedroom","space_label":"Bedroom","dimensions_mm":null,"area_m2":"15","access":["S2","S6"],"comments":"no comments"},
+        {"space_id":"S5","space_category":"laundry cupboard","space_label":"Laundry Cupboard","dimensions_mm":null,"area_m2":null,"access":["S3"],"comments":"the laundry cupboard seems to be doubled up as a walk-in robe."},
+        {"space_id":"S6","space_category":"balcony","space_label":"Balcony","dimensions_mm":null,"area_m2":null,"access":["S4","EXT_YARD"],"comments":"The balcony is large and has a view."}
+      ]
+    },
+    {
+      "metadata": {"street_address":"22 Willow Way","suburb":"Lane Cove","state":"NSW","total_rooms":"5"},
+      "spaces_list":[
+        {"space_id":"E","space_label":"Entry","space_category":"entry","access":["L","EXT_STREET"]},
+        {"space_id":"L","space_label":"Lounge","space_category":"living room","access":["E","K"]},
+        {"space_id":"K","space_label":"Kitchen","space_category":"kitchen","access":["L","B1"]},
+        {"space_id":"B1","space_label":"Bedroom","space_category":"bedroom","access":["K","EXT_YARD"]}
+      ]
+    }
+  ];
+  inputEl.value = JSON.stringify(example, null, 2);
+  addDatasets(example);
 })();
 </script>
 </body>
