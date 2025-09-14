@@ -529,6 +529,11 @@ function updateCharts() {
   const lengthData = window[`lengthData_${currentIndex}`] || [];
   const areaData = widthData.map((w, i) => w * lengthData[i] / 1000000); // Convert to m²
   
+  // Calculate medians
+  const widthMedian = widthData.length > 0 ? calculateMedian([...widthData].sort((a, b) => a - b)) : null;
+  const lengthMedian = lengthData.length > 0 ? calculateMedian([...lengthData].sort((a, b) => a - b)) : null;
+  const areaMedian = areaData.length > 0 ? calculateMedian([...areaData].sort((a, b) => a - b)) : null;
+  
   const commonOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -541,17 +546,51 @@ function updateCharts() {
   
   // Composite width/length chart
   if (widthData.length > 0) {
+    const scatterDatasets = [{
+      label: 'Width vs Length',
+      data: widthData.map((w, i) => ({ x: w, y: lengthData[i] })),
+      backgroundColor: 'rgba(100, 116, 139, 0.6)',
+      borderColor: '#64748b',
+      borderWidth: 1
+    }];
+    
+    // Add median indicator lines
+    if (widthMedian !== null && lengthMedian !== null) {
+      const minWidth = Math.min(...widthData);
+      const maxWidth = Math.max(...widthData);
+      const minLength = Math.min(...lengthData);
+      const maxLength = Math.max(...lengthData);
+      
+      // Vertical line for width median
+      scatterDatasets.push({
+        label: `Width Median (${widthMedian.toFixed(0)}mm)`,
+        data: [{ x: widthMedian, y: minLength }, { x: widthMedian, y: maxLength }],
+        backgroundColor: 'rgba(231, 64, 153, 0.8)',
+        borderColor: '#E74099',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        showLine: true,
+        fill: false
+      });
+      
+      // Horizontal line for length median
+      scatterDatasets.push({
+        label: `Length Median (${lengthMedian.toFixed(0)}mm)`,
+        data: [{ x: minWidth, y: lengthMedian }, { x: maxWidth, y: lengthMedian }],
+        backgroundColor: 'rgba(231, 64, 153, 0.8)',
+        borderColor: '#E74099',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        pointRadius: 0,
+        showLine: true,
+        fill: false
+      });
+    }
+    
     charts.composite = new Chart(document.getElementById('compositeChart'), {
       type: 'scatter',
-      data: {
-        datasets: [{
-          label: 'Width vs Length',
-          data: widthData.map((w, i) => ({ x: w, y: lengthData[i] })),
-          backgroundColor: 'rgba(100, 116, 139, 0.6)',
-          borderColor: '#64748b',
-          borderWidth: 1
-        }]
-      },
+      data: { datasets: scatterDatasets },
       options: {
         ...commonOptions,
         scales: {
@@ -565,26 +604,51 @@ function updateCharts() {
   
   // Area distribution chart
   if (areaData.length > 0) {
+    const lineDatasets = [{
+      label: 'Area (m²)',
+      data: areaData,
+      borderColor: '#64748b',
+      backgroundColor: 'rgba(100, 116, 139, 0.1)',
+      borderWidth: 2,
+      fill: true,
+      tension: 0.3,
+      pointRadius: 2,
+      pointBackgroundColor: '#64748b'
+    }];
+    
+    // Add median indicator line
+    if (areaMedian !== null) {
+      lineDatasets.push({
+        label: `Area Median (${areaMedian.toFixed(2)}m²)`,
+        data: new Array(areaData.length).fill(areaMedian),
+        borderColor: '#E74099',
+        backgroundColor: 'rgba(231, 64, 153, 0.1)',
+        borderWidth: 2,
+        borderDash: [5, 5],
+        fill: false,
+        pointRadius: 0,
+        tension: 0
+      });
+    }
+    
     charts.area = new Chart(document.getElementById('areaChart'), {
       type: 'line',
       data: {
         labels: areaData.map((_, i) => i + 1),
-        datasets: [{
-          label: 'Area (m²)',
-          data: areaData,
-          borderColor: '#64748b',
-          backgroundColor: 'rgba(100, 116, 139, 0.1)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-          pointBackgroundColor: '#64748b'
-        }]
+        datasets: lineDatasets
       },
       options: commonOptions
     });
     document.getElementById('areaMeta').textContent = `${areaData.length} samples`;
   }
+}
+
+function calculateMedian(sortedArray) {
+  if (sortedArray.length === 0) return null;
+  const mid = Math.floor(sortedArray.length / 2);
+  return sortedArray.length % 2 === 0 
+    ? (sortedArray[mid - 1] + sortedArray[mid]) / 2 
+    : sortedArray[mid];
 }
 
 function nextSpace() {
