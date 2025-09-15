@@ -11,7 +11,7 @@
     --panel:#ffffff;
     --ink:#0f172a;
     --muted:#64748b;
-    --accent:#2563eb;
+    --accent:#E74099;
     --border:#e2e8f0;
   }
 
@@ -55,7 +55,10 @@
   .right{position:relative;overflow:hidden;background:var(--panel)}
   .main-content{display:grid;grid-template-rows:auto 1fr auto;height:100%;padding:16px;gap:16px}
   
-  .space-title{font-size:14px;color:var(--ink);font-weight:800;text-align:center;margin:8px 0;padding:8px;background:linear-gradient(135deg, #f8fafc, #e2e8f0);border-radius:6px;border:1px solid var(--border)}
+  .space-title{font-size:14px;color:var(--ink);font-weight:800;text-align:center;margin:8px 0;padding:8px;background:linear-gradient(135deg, #f8fafc, #e2e8f0);border-radius:6px;border:1px solid var(--border);position:relative;display:flex;align-items:center;justify-content:center;gap:12px}
+  .space-title .nav-arrow{color:var(--accent);font-size:18px;font-weight:bold;cursor:pointer;padding:4px 8px;border-radius:4px;transition:all 0.2s ease;user-select:none}
+  .space-title .nav-arrow:hover{background:rgba(231,64,153,0.1);transform:scale(1.1)}
+  .space-title .nav-arrow:active{transform:scale(0.95)}
   
   .visualizations{display:grid;grid-template-columns:1fr 1fr;gap:20px}
   .viz-card{border:1px solid var(--border);border-radius:12px;padding:16px;background:var(--panel)}
@@ -139,7 +142,11 @@
 
   <div class="right">
     <div class="main-content">
-      <div class="space-title" id="spaceTitle">Loading...</div>
+      <div class="space-title" id="spaceTitle">
+        <span class="nav-arrow" onclick="previousSpace()" title="Previous Space">◀</span>
+        <span id="spaceTitleText">Loading...</span>
+        <span class="nav-arrow" onclick="nextSpace()" title="Next Space">▶</span>
+      </div>
       
       <div class="visualizations">
         <div class="viz-card">
@@ -367,7 +374,7 @@ function updateDisplay() {
   const [spaceName, data] = spaceData[currentIndex];
   
   // Update prominent space title
-  document.getElementById('spaceTitle').textContent = spaceName.replace(/^s\./, '').replace(/\./g, ' › ').toUpperCase();
+  document.getElementById('spaceTitleText').textContent = spaceName.replace(/^s\./, '').replace(/\./g, ' › ').toUpperCase();
   
   // Update navigation
   document.getElementById('spaceIdx').textContent = currentIndex + 1;
@@ -525,9 +532,10 @@ function updateCharts() {
   Object.values(charts).forEach(chart => chart.destroy());
   charts = {};
   
-  const widthData = window[`widthData_${currentIndex}`] || [];
-  const lengthData = window[`lengthData_${currentIndex}`] || [];
-  const areaData = widthData.map((w, i) => w * lengthData[i] / 1000000); // Convert to m²
+  const widthData = (window[`widthData_${currentIndex}`] || []).filter(v => Number.isFinite(v) && v > 0);
+  const lengthData = (window[`lengthData_${currentIndex}`] || []).filter(v => Number.isFinite(v) && v > 0);
+  const areaData = widthData.map((w, i) => (lengthData[i] ? (w * lengthData[i]) / 1_000_000 : null))
+                           .filter(v => v !== null);
   
   // Calculate medians
   const widthMedian = widthData.length > 0 ? calculateMedian([...widthData].sort((a, b) => a - b)) : null;
@@ -546,47 +554,59 @@ function updateCharts() {
   
   // Composite width/length chart
   if (widthData.length > 0) {
-    const scatterDatasets = [{
-      label: 'Width vs Length',
-      data: widthData.map((w, i) => ({ x: w, y: lengthData[i] })),
-      backgroundColor: 'rgba(100, 116, 139, 0.6)',
-      borderColor: '#64748b',
-      borderWidth: 1
-    }];
+    const scatterDatasets = [];
     
-    // Add median indicator lines
-    if (widthMedian !== null && lengthMedian !== null) {
+    // Add statistical points FIRST (so they render on top)
+    if (widthData.length > 0) {
       const minWidth = Math.min(...widthData);
       const maxWidth = Math.max(...widthData);
       const minLength = Math.min(...lengthData);
       const maxLength = Math.max(...lengthData);
       
-      // Vertical line for width median
+      // Min point
       scatterDatasets.push({
-        label: `Width Median (${widthMedian.toFixed(0)}mm)`,
-        data: [{ x: widthMedian, y: minLength }, { x: widthMedian, y: maxLength }],
-        backgroundColor: 'rgba(231, 64, 153, 0.8)',
+        label: `Min (${minWidth}×${minLength}mm)`,
+        data: [{ x: minWidth, y: minLength }],
+        backgroundColor: '#E74099',
         borderColor: '#E74099',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        pointRadius: 0,
-        showLine: true,
-        fill: false
+        borderWidth: 1,
+        pointRadius: 3,
+        showLine: false
       });
       
-      // Horizontal line for length median
+      // Median point
+      if (widthMedian !== null && lengthMedian !== null) {
+        scatterDatasets.push({
+          label: `Median (${widthMedian.toFixed(0)}×${lengthMedian.toFixed(0)}mm)`,
+          data: [{ x: widthMedian, y: lengthMedian }],
+          backgroundColor: '#E74099',
+          borderColor: '#E74099',
+          borderWidth: 1,
+          pointRadius: 3,
+          showLine: false
+        });
+      }
+      
+      // Max point
       scatterDatasets.push({
-        label: `Length Median (${lengthMedian.toFixed(0)}mm)`,
-        data: [{ x: minWidth, y: lengthMedian }, { x: maxWidth, y: lengthMedian }],
-        backgroundColor: 'rgba(231, 64, 153, 0.8)',
+        label: `Max (${maxWidth}×${maxLength}mm)`,
+        data: [{ x: maxWidth, y: maxLength }],
+        backgroundColor: '#E74099',
         borderColor: '#E74099',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        pointRadius: 0,
-        showLine: true,
-        fill: false
+        borderWidth: 1,
+        pointRadius: 3,
+        showLine: false
       });
     }
+    
+    // Add main data points LAST (so they render behind statistical points)
+    scatterDatasets.push({
+      label: 'Width vs Length',
+      data: widthData.map((w, i) => ({ x: w, y: lengthData[i] })),
+      backgroundColor: 'rgba(100, 116, 139, 0.6)',
+      borderColor: '#64748b',
+      borderWidth: 1
+    });
     
     charts.composite = new Chart(document.getElementById('compositeChart'), {
       type: 'scatter',
@@ -602,44 +622,187 @@ function updateCharts() {
     document.getElementById('compositeMeta').textContent = `${widthData.length} samples`;
   }
   
-  // Area distribution chart
+  // Area distribution chart (bell curve histogram with density curve)
   if (areaData.length > 0) {
-    const lineDatasets = [{
-      label: 'Area (m²)',
-      data: areaData,
-      borderColor: '#64748b',
-      backgroundColor: 'rgba(100, 116, 139, 0.1)',
-      borderWidth: 2,
-      fill: true,
-      tension: 0.3,
-      pointRadius: 2,
-      pointBackgroundColor: '#64748b'
-    }];
+    // Create histogram bins
+    const minArea = Math.min(...areaData);
+    const maxArea = Math.max(...areaData);
     
-    // Add median indicator line
-    if (areaMedian !== null) {
-      lineDatasets.push({
-        label: `Area Median (${areaMedian.toFixed(2)}m²)`,
-        data: new Array(areaData.length).fill(areaMedian),
-        borderColor: '#E74099',
-        backgroundColor: 'rgba(231, 64, 153, 0.1)',
-        borderWidth: 2,
-        borderDash: [5, 5],
-        fill: false,
-        pointRadius: 0,
-        tension: 0
+    if (minArea === maxArea) {
+      // Degenerate case: all areas equal -> single bin
+      const binLabels = [`${minArea.toFixed(1)}–${(minArea+1).toFixed(1)}`];
+      const bins = [areaData.length];
+
+      const medianArea = minArea;
+      const datasets = [
+        {
+          label: 'Frequency',
+          data: bins,
+          backgroundColor: 'rgba(100, 116, 139, 0.3)',
+          borderColor: '#64748b',
+          borderWidth: 1,
+          borderRadius: 2,
+          borderSkipped: false,
+          maxBarThickness: 40,
+          categoryPercentage: 0.6,
+          barPercentage: 0.8,
+          yAxisID: 'y'
+        },
+        {
+          label: `Median (${medianArea.toFixed(2)}m²)`,
+          type: 'scatter',
+          data: [{ x: binLabels[0], y: bins[0] }],
+          parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+          backgroundColor: '#E74099',
+          borderColor: '#E74099',
+          borderWidth: 2,
+          pointRadius: 6,
+          showLine: false,
+          yAxisID: 'y'
+        }
+      ];
+
+      charts.area = new Chart(document.getElementById('areaChart'), {
+        type: 'bar',
+        data: { labels: binLabels, datasets },
+        options: {
+          ...commonOptions,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: true, labels: { color: '#64748b', font: { size: 10 } } } },
+          scales: {
+            x: { 
+              title: { display: true, text: 'Area (m²)', color: '#64748b' }, 
+              ticks: { color: '#64748b', font: { size: 9 } },
+              grid: { color: 'rgba(100, 116, 139, 0.1)' }
+            },
+            y: { 
+              title: { display: true, text: 'Quantity', color: '#64748b' }, 
+              beginAtZero: true, 
+              ticks: { color: '#64748b', font: { size: 9 }, stepSize: 1 },
+              grid: { color: 'rgba(100, 116, 139, 0.1)' }
+            }
+          }
+        }
       });
+      document.getElementById('areaMeta').textContent = `${areaData.length} samples in 1 bin`;
+      return;
     }
+
+    // Normal case
+    const binCount = Math.min(10, Math.max(5, Math.floor(areaData.length / 3)));
+    const binSize = (maxArea - minArea) / binCount;
+
+    const bins = [];
+    const binLabels = [];
+    const binCenters = [];
+    for (let i = 0; i < binCount; i++) {
+      const start = minArea + i * binSize;
+      const end   = minArea + (i + 1) * binSize;
+      binLabels.push(`${start.toFixed(1)}-${end.toFixed(1)}`);
+      binCenters.push(start + binSize / 2);
+      const inBin = areaData.filter(a =>
+        i === binCount - 1 ? (a >= start && a <= end) : (a >= start && a < end)
+      ).length;
+      bins.push(inBin);
+    }
+
+    // KDE with sensible bandwidth (Silverman)
+    const n = areaData.length;
+    const variance = (() => {
+      const mean = areaData.reduce((s,v)=>s+v,0)/n;
+      return areaData.reduce((s,v)=>s+(v-mean)*(v-mean),0)/n;
+    })();
+    const sd = Math.sqrt(Math.max(variance, 1e-12));
+    const bandwidth = 0.9 * sd * Math.pow(n, -1/5); // Silverman's rule
+    const K = z => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+    const kdeAt = x => {
+      let s = 0;
+      for (const v of areaData) s += K((x - v) / bandwidth);
+      return s / (n * bandwidth);
+    };
+
+    // Scale density to histogram COUNTS (so y-units match bars)
+    const densityY = binCenters.map(c => kdeAt(c) * n * binSize);
+
+    // Median
+    const sortedAreas = [...areaData].sort((a,b)=>a-b);
+    const mid = Math.floor(n / 2);
+    const medianArea = n % 2 ? sortedAreas[mid] : (sortedAreas[mid-1] + sortedAreas[mid]) / 2;
+
+    // Which bin holds the median?
+    let medianBinIndex = Math.min(
+      binCount - 1,
+      Math.max(0, Math.floor((medianArea - minArea) / binSize))
+    );
+    const medianPoint = { x: binLabels[medianBinIndex], y: bins[medianBinIndex] };
+
+    const datasets = [
+      {
+        label: 'Frequency',
+        data: bins,
+        backgroundColor: 'rgba(100, 116, 139, 0.3)',
+        borderColor: '#64748b',
+        borderWidth: 1,
+        borderRadius: 2,
+        borderSkipped: false,
+        maxBarThickness: 40,
+        categoryPercentage: 0.6,
+        barPercentage: 0.8,
+        yAxisID: 'y'
+      },
+      // Density curve as a line ALIGNED TO CATEGORIES (one value per label)
+      {
+        label: 'Density Curve',
+        type: 'line',
+        data: densityY,            // same length/order as binLabels
+        borderColor: '#64748b',    // standard chart colour
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        yAxisID: 'y'
+      },
+      // Median dot on the column
+      {
+        label: `Median (${medianArea.toFixed(2)}m²)`,
+        type: 'scatter',
+        data: [medianPoint],       // x is the BIN LABEL, not index
+        parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+        backgroundColor: '#E74099',
+        borderColor: '#E74099',
+        borderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 7,
+        showLine: false,
+        yAxisID: 'y'
+      }
+    ];
     
     charts.area = new Chart(document.getElementById('areaChart'), {
-      type: 'line',
-      data: {
-        labels: areaData.map((_, i) => i + 1),
-        datasets: lineDatasets
-      },
-      options: commonOptions
+      type: 'bar',
+      data: { labels: binLabels, datasets },
+      options: {
+        ...commonOptions,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: true, labels: { color: '#64748b', font: { size: 10 } } } },
+        scales: {
+          x: { 
+            title: { display: true, text: 'Area (m²)', color: '#64748b' }, 
+            ticks: { color: '#64748b', font: { size: 9 } },
+            grid: { color: 'rgba(100, 116, 139, 0.1)' }
+          },
+          y: { 
+            title: { display: true, text: 'Quantity', color: '#64748b' }, 
+            beginAtZero: true, 
+            ticks: { color: '#64748b', font: { size: 9 }, stepSize: 1 },
+            grid: { color: 'rgba(100, 116, 139, 0.1)' }
+          }
+        }
+      }
     });
-    document.getElementById('areaMeta').textContent = `${areaData.length} samples`;
+    document.getElementById('areaMeta').textContent = `${areaData.length} samples in ${binCount} bins with density curve`;
   }
 }
 
