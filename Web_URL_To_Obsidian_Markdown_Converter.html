@@ -1302,13 +1302,16 @@
             }
         }
 
-        async function downloadFilesToFolder(outputData) {
+        async function downloadFilesToFolder(outputData, folderHandle = null) {
             try {
                 // Check if File System Access API is supported
                 if ('showDirectoryPicker' in window) {
-                    addStatus('Select a folder to save the files...', 'info');
-                    const folderHandle = await window.showDirectoryPicker();
-                    lastFolderHandle = folderHandle;
+                    // Use provided folder handle if available, otherwise request one
+                    if (!folderHandle) {
+                        addStatus('Select a folder to save the files...', 'info');
+                        folderHandle = await window.showDirectoryPicker();
+                        lastFolderHandle = folderHandle;
+                    }
                     
                     await saveFilesToFolder(folderHandle, outputData);
                     addStatus('All files saved successfully!', 'success');
@@ -1677,7 +1680,7 @@
 
             // Save files to folder
             addStatus('Saving files to folder...', 'info');
-            await downloadFilesToFolder(outputData);
+            await downloadFilesToFolder(outputData, options.folderHandle);
             
             updateProgress(100);
             addStatus('Conversion completed successfully!', 'success');
@@ -1711,11 +1714,31 @@
             convertBtn.textContent = 'Processing...';
             downloadAgainBtn.style.display = 'none'; // Hide while processing new conversion
 
+            // Request folder handle immediately while user gesture is active
+            let folderHandle = null;
+            if ('showDirectoryPicker' in window) {
+                try {
+                    addStatus('Select a folder to save the files...', 'info');
+                    folderHandle = await window.showDirectoryPicker();
+                    lastFolderHandle = folderHandle;
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        addStatus('Folder selection cancelled or failed, will download files individually', 'warning');
+                    } else {
+                        addStatus('Folder selection cancelled', 'info');
+                        convertBtn.disabled = false;
+                        convertBtn.textContent = 'Convert & Download';
+                        return;
+                    }
+                }
+            }
+
             try {
                 await convertWebpageToMarkdown(url, {
                     prefix: prefix,
                     downloadImages: downloadImages,
-                    useCorsProxy: useCorsProxy
+                    useCorsProxy: useCorsProxy,
+                    folderHandle: folderHandle
                 });
             } catch (error) {
                 addStatus(`Error: ${error.message}`, 'error');
@@ -1742,21 +1765,40 @@
             addStatus('Downloading files again...', 'info');
 
             try {
-                // If we have a previous folder handle, try to use it
-                if (lastFolderHandle) {
-                    try {
-                        await saveFilesToFolder(lastFolderHandle, lastProcessedData);
-                        addStatus('Files saved to previous folder!', 'success');
-                    } catch (error) {
-                        addStatus('Previous folder unavailable, please select a new folder...', 'warning');
-                        await downloadFilesToFolder(lastProcessedData);
+                let folderHandle = lastFolderHandle;
+                
+                // Request a folder handle immediately (while user gesture is active)
+                // We'll try to use the previous one first, but have a new one ready if it fails
+                if ('showDirectoryPicker' in window && !folderHandle) {
+                    addStatus('Select a folder to save the files...', 'info');
+                    folderHandle = await window.showDirectoryPicker();
+                    lastFolderHandle = folderHandle;
+                } else if (folderHandle) {
+                    addStatus('Using previous folder...', 'info');
+                }
+                
+                try {
+                    await downloadFilesToFolder(lastProcessedData, folderHandle);
+                    addStatus('Files saved successfully!', 'success');
+                } catch (saveError) {
+                    // If using previous handle failed, request a new one (still within user gesture context)
+                    if (folderHandle === lastFolderHandle && lastFolderHandle && 'showDirectoryPicker' in window) {
+                        addStatus('Previous folder unavailable, selecting new folder...', 'warning');
+                        folderHandle = await window.showDirectoryPicker();
+                        lastFolderHandle = folderHandle;
+                        await downloadFilesToFolder(lastProcessedData, folderHandle);
+                        addStatus('Files saved successfully!', 'success');
+                    } else {
+                        throw saveError;
                     }
-                } else {
-                    await downloadFilesToFolder(lastProcessedData);
                 }
             } catch (error) {
-                addStatus(`Error: ${error.message}`, 'error');
-                console.error('Download error:', error);
+                if (error.name === 'AbortError') {
+                    addStatus('Folder selection cancelled', 'info');
+                } else {
+                    addStatus(`Error: ${error.message}`, 'error');
+                    console.error('Download error:', error);
+                }
             } finally {
                 downloadBtn.disabled = false;
                 downloadBtn.textContent = 'Download Again';
